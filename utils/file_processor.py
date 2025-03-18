@@ -1,8 +1,7 @@
 """
 file_processor.py
 
-ファイルからテキストを抽出するためのモジュール。
-対応ファイル形式: Word (.docx) と PDF (.pdf)
+Word (.docx) および PDF (.pdf) ファイルからテキストを抽出するモジュール
 """
 
 from docx import Document
@@ -10,7 +9,7 @@ import PyPDF2
 
 def extract_text_from_docx(file_obj):
     """
-    docxファイルからテキストを抽出する関数。
+    Wordファイルからテキストを抽出する関数
 
     Args:
         file_obj: Wordファイルのバイナリオブジェクト
@@ -27,7 +26,7 @@ def extract_text_from_docx(file_obj):
 
 def extract_text_from_pdf(file_obj):
     """
-    PDFファイルからテキストを抽出する関数。
+    PDFファイルからテキストを抽出する関数
 
     Args:
         file_obj: PDFファイルのバイナリオブジェクト
@@ -48,7 +47,7 @@ def extract_text_from_pdf(file_obj):
 
 def extract_text(file_obj):
     """
-    アップロードされたファイルの拡張子を確認し、対応するテキスト抽出関数を呼び出す関数。
+    アップロードされたファイルの拡張子に基づいて、適切なテキスト抽出関数を呼び出す
 
     Args:
         file_obj: アップロードされたファイルオブジェクト
@@ -62,4 +61,4 @@ def extract_text(file_obj):
     elif filename.endswith(".pdf"):
         return extract_text_from_pdf(file_obj)
     else:
-        raise ValueError("サポートされていないファイル形式です。 (.docx, .pdf) を使用してください。")
+        raise ValueError("サポートされていないファイル形式です。(.docx, .pdf) を使用してください。")
