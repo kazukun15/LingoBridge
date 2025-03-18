@@ -5,9 +5,14 @@ import os
 import asyncio
 import httpx
 import requests
+import json
 from docx import Document
 from utils.file_processor import extract_text
+from google.cloud import storage
+from google.oauth2 import service_account
 from PyPDF2 import PdfReader
+import io
+import difflib
 
 # ワイドモードで起動
 st.set_page_config(layout="wide")
@@ -43,79 +48,97 @@ div.stButton > button, div.stDownloadButton > button {
 </style>
 """, unsafe_allow_html=True)
 
-# --- RAG: PDFの議事録を読み込み・検索するための機能 ---
+# サイドバーにファイルアップロード、要約生成、ファイル出力、出力形式選択、GCS接続、PDF検索クエリ
+sidebar_file = st.sidebar.file_uploader("WordまたはPDFファイルをアップロードしてください", type=["docx", "pdf"])
+if sidebar_file:
+    st.sidebar.write("ファイルがアップロードされました。")
+generate_summary_btn = st.sidebar.button("要約を生成")
+output_btn = st.sidebar.button("ファイルを出力")
+output_format = st.sidebar.radio("出力形式を選択してください", ("Word", "PDF"))
+connect_gcs_btn = st.sidebar.button("GCSに接続")
+search_query = st.sidebar.text_input("議事録検索クエリ (PDF)", value="")
 
-def load_all_meeting_minutes(folder_path="data/meeting_minutes"):
-    """
-    指定フォルダ内にある複数PDFファイルのテキストを読み込み、ファイル名をキー、
-    テキストを値とする辞書を返す。
-    """
+st.title("LingoBridge - 方言→標準語変換＆要約アプリ")
+
+# --- GCS 接続（サービスアカウントの JSON キーを利用） ---
+if connect_gcs_btn:
+    st.sidebar.write("GCSに接続しています...")
+    try:
+        # JSONキーは secrets から読み込み
+        json_key_str = st.secrets["google_cloud"]["json_key"]
+        json_key = json.loads(json_key_str)
+        credentials = service_account.Credentials.from_service_account_info(json_key)
+        client = storage.Client(credentials=credentials, project=json_key["project_id"])
+        buckets = list(client.list_buckets())
+        if buckets:
+            st.sidebar.write("取得したバケット一覧:")
+            for b in buckets:
+                st.sidebar.write(" - ", b.name)
+        else:
+            st.sidebar.write("バケットがありません。")
+    except Exception as e:
+        st.sidebar.error(f"GCS接続に失敗しました: {e}")
+
+# --- RAG：GCS から議事録PDFを読み込み、検索機能 ---
+def load_all_meeting_minutes_gcs(bucket_name, prefix=""):
+    """指定バケット内のPDFを読み込み、ファイル名→テキストの辞書を返す"""
     meeting_data = {}
-    if os.path.exists(folder_path):
-        pdf_files = [f for f in os.listdir(folder_path) if f.lower().endswith(".pdf")]
-        for pdf_file in pdf_files:
-            full_path = os.path.join(folder_path, pdf_file)
-            try:
-                reader = PdfReader(full_path)
-                all_text = ""
-                for page in reader.pages:
-                    txt = page.extract_text()
-                    if txt:
-                        all_text += txt + "\n"
-                meeting_data[pdf_file] = all_text
-            except Exception as e:
-                print(f"PDF読み込みに失敗: {pdf_file}, {e}")
+    try:
+        # 認証情報は同じく secrets を利用
+        json_key_str = st.secrets["google_cloud"]["json_key"]
+        json_key = json.loads(json_key_str)
+        credentials = service_account.Credentials.from_service_account_info(json_key)
+        client = storage.Client(credentials=credentials, project=json_key["project_id"])
+        blobs = client.list_blobs(bucket_name, prefix=prefix)
+        for blob in blobs:
+            if blob.name.lower().endswith(".pdf"):
+                pdf_bytes = blob.download_as_bytes()
+                pdf_stream = io.BytesIO(pdf_bytes)
+                try:
+                    reader = PdfReader(pdf_stream)
+                    text = ""
+                    for page in reader.pages:
+                        page_text = page.extract_text()
+                        if page_text:
+                            text += page_text + "\n"
+                    meeting_data[blob.name] = text
+                except Exception as e:
+                    st.write(f"PDF読み込み失敗: {blob.name}, {e}")
+    except Exception as e:
+        st.error(f"GCSからのPDF読み込みに失敗しました: {e}")
     return meeting_data
 
 def search_meeting_minutes(meeting_data, query):
-    """
-    複数PDFファイルのテキストを検索し、該当部分を返す（簡易的な文字列検索）。
-    """
+    """議事録データから検索クエリに一致する行を抽出"""
     results = []
     if not query:
         return results
     for filename, text in meeting_data.items():
         lines = text.splitlines()
-        matched_lines = []
-        for line in lines:
-            if query.lower() in line.lower():
-                matched_lines.append(line.strip())
+        matched_lines = [line.strip() for line in lines if query.lower() in line.lower()]
         if matched_lines:
             results.append((filename, matched_lines))
     return results
 
-# 議事録をロード（フォルダ data/meeting_minutes 内）
-meeting_minutes_data = load_all_meeting_minutes("data/meeting_minutes")
-
-# サイドバー：PDF議事録検索クエリ
-search_query = st.sidebar.text_input("議事録検索クエリ (PDF)")
-
 if search_query:
-    st.sidebar.markdown("### 検索結果")
+    st.sidebar.markdown("### 議事録検索結果")
+    # 例: バケット名とプレフィックスを指定（適宜変更してください）
+    bucket_name = st.sidebar.text_input("検索するバケット名", value="storage1155")
+    gcs_prefix = st.sidebar.text_input("検索するフォルダ (prefix)", value="meeting_minutes/")
+    meeting_minutes_data = load_all_meeting_minutes_gcs(bucket_name, gcs_prefix)
     if meeting_minutes_data:
-        search_results = search_meeting_minutes(meeting_minutes_data, search_query)
-        if search_results:
-            for (fname, lines) in search_results:
-                st.sidebar.write(f"**{fname}** の該当箇所:")
+        res = search_meeting_minutes(meeting_minutes_data, search_query)
+        if res:
+            for fname, lines in res:
+                st.sidebar.write(f"**{fname}**")
                 for ln in lines:
                     st.sidebar.write(f"- {ln}")
         else:
             st.sidebar.write("該当する内容が見つかりませんでした。")
     else:
-        st.sidebar.write("議事録PDFがロードされていません。'data/meeting_minutes' フォルダを確認してください。")
+        st.sidebar.write("議事録PDFがロードされていません。")
 
-# --- 既存のファイルアップロード・変換・要約などの機能 ---
-
-sidebar_file = st.sidebar.file_uploader("WordまたはPDFファイルをアップロードしてください", type=["docx", "pdf"])
-if sidebar_file:
-    st.sidebar.write("ファイルがアップロードされました。")
-
-generate_summary_btn = st.sidebar.button("要約を生成")
-output_btn = st.sidebar.button("ファイルを出力")
-output_format = st.sidebar.radio("出力形式を選択してください", ("Word", "PDF"))
-
-st.title("LingoBridge - 方言→標準語変換＆要約アプリ")
-
+# --- 既存の変換処理部分 ---
 if sidebar_file is not None:
     try:
         original_text = extract_text(sidebar_file)
@@ -124,7 +147,6 @@ if sidebar_file is not None:
         st.error(f"ファイルからテキストを抽出できませんでした: {e}")
         original_text = ""
     
-    # 変換処理用プログレスバー（％表示付き）
     progress_bar = st.progress(0)
     progress_text = st.empty()
     for percent in range(1, 101):
@@ -132,7 +154,6 @@ if sidebar_file is not None:
         progress_bar.progress(percent)
         progress_text.text(f"{percent}%")
     
-    # 共通のAPI設定
     api_key = st.secrets.get("GEMINI_API_KEY", "")
     api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
     headers = {"Content-Type": "application/json"}
@@ -148,9 +169,9 @@ if sidebar_file is not None:
                     response.raise_for_status()
                     return response.json()
             except httpx.TimeoutException:
-                st.warning(f"非同期処理タイムアウト：{attempt}回目のリトライ中です...")
+                st.warning(f"非同期タイムアウト：{attempt}回目のリトライ中...")
                 if attempt == max_attempts:
-                    st.error("非同期処理のリクエストがタイムアウトしました。")
+                    st.error("リクエストがタイムアウトしました。")
                     return {}
                 else:
                     await asyncio.sleep(5)
@@ -160,14 +181,12 @@ if sidebar_file is not None:
                 st.error(str(re))
                 return {}
             except Exception as e:
-                st.error("非同期処理で予期しないエラーが発生しました：" + str(e))
+                st.error("非同期処理で予期しないエラー：" + str(e))
                 return {}
         return {}
 
-    # 方言→標準語変換処理
     convert_prompt = (
-        "以下の文章は方言が含まれています。文章全体の意味を十分に考慮し、"
-        "すべての方言表現を標準語に変換してください。変換後の文章のみを出力してください。\n\n"
+        "以下の文章は方言が含まれています。文章全体の意味を十分に考慮し、すべての方言表現を標準語に変換してください。変換後の文章のみを出力してください。\n\n"
         "テキスト:\n" + original_text
     )
     convert_payload = {"contents": [{"parts": [{"text": convert_prompt}]}]}
@@ -180,7 +199,7 @@ if sidebar_file is not None:
         try:
             converted_text = response_json["candidates"][0]["content"]["parts"][0]["text"].strip()
         except (KeyError, IndexError):
-            st.error("変換処理レスポンス構造が想定と異なります。")
+            st.error("レスポンス構造が想定と異なります。")
             st.write("レスポンス内容:", response_json)
             converted_text = ""
     elif "text" in response_json:
@@ -191,7 +210,6 @@ if sidebar_file is not None:
         converted_text = ""
     st.write("変換完了。")
     
-    # タブ表示で元のテキストと変換後テキスト
     if converted_text:
         tabs = st.tabs(["元のテキスト", "変換後のテキスト"])
         with tabs[0]:
@@ -268,7 +286,6 @@ if sidebar_file is not None:
             """
             components.html(html_converted, height=470, scrolling=True)
     
-    # サイドバーのファイル出力
     if output_btn:
         if output_format == "Word":
             try:
@@ -292,7 +309,6 @@ if sidebar_file is not None:
             except Exception as e:
                 st.error("PDFファイルの生成に失敗しました：" + str(e))
     
-    # 要約機能
     summary_text = ""
     if generate_summary_btn:
         summarize_prompt = (
