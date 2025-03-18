@@ -1,9 +1,3 @@
-"""
-file_processor.py
-
-Word (.docx) および PDF (.pdf) ファイルからテキストを抽出するモジュール
-"""
-
 from docx import Document
 import PyPDF2
 
