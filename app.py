@@ -6,7 +6,7 @@ from docx import Document
 from utils.file_processor import extract_text  # utils/file_processor.py に実装済み
 
 # -------------------------------
-# デバッグ用：secretsの読み込み確認（本番環境では表示しないこと）
+# デバッグ用：secretsの読み込み確認（本番環境では表示しないでください）
 if "GEMINI_API_KEY" in st.secrets:
     st.write("【デバッグ表示】GEMINI_API_KEY:", st.secrets["GEMINI_API_KEY"])
 else:
@@ -41,7 +41,7 @@ if uploaded_file is not None:
         progress_bar.progress(percent)
     
     # 5. Gemini API 呼び出しの準備
-    # プロンプトはシンプルに作成
+    # プロンプトを作成（方言を標準語に変換する指示付き）
     prompt = (
         "以下の文章は方言が含まれています。文章全体の意味を十分に考慮し、"
         "すべての方言表現を標準語に変換してください。変換後の文章のみを出力してください。\n\n"
@@ -84,24 +84,11 @@ if uploaded_file is not None:
                 with st.expander("APIレスポンス (JSON)"):
                     st.json(response_json, expanded=False)
                 
-                # "candidates" キーがあればそちらから変換後テキストを取得
-                if "candidates" in response_json:
-                    try:
-                        converted_text = response_json["candidates"][0]["text"].strip()
-                    except (KeyError, IndexError):
-                        st.error("レスポンス構造が想定と異なります。")
-                        st.write("レスポンス内容:", response_json)
-                        converted_text = ""
-                # もし "contents" キーがあればそちらから取得
-                elif "contents" in response_json:
-                    try:
-                        converted_text = response_json["contents"][0]["parts"][0]["text"].strip()
-                    except (KeyError, IndexError):
-                        st.error("レスポンス構造が想定と異なります。")
-                        st.write("レスポンス内容:", response_json)
-                        converted_text = ""
+                # トップレベルの "text" キーから変換後テキストを取得
+                if "text" in response_json:
+                    converted_text = response_json["text"].strip()
                 else:
-                    st.error("APIレスポンスに 'candidates' または 'contents' キーが存在しません。")
+                    st.error("APIレスポンスに 'text' キーが存在しません。")
                     st.write("APIレスポンス:", response_json)
                     converted_text = ""
                 
