@@ -6,7 +6,7 @@ import requests
 from docx import Document
 from utils.file_processor import extract_text
 
-# グローバルCSS（Robotoフォント採用、背景は白、モノクロで統一）
+# グローバルCSS（Robotoフォント採用、背景は白、モノクロで統一、全体が見えるよう自動改行）
 st.markdown("""
 <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
@@ -41,7 +41,6 @@ div.stButton > button, div.stDownloadButton > button {
 sidebar_file = st.sidebar.file_uploader("WordまたはPDFファイルをアップロードしてください", type=["docx", "pdf"])
 if sidebar_file:
     st.sidebar.write("ファイルがアップロードされました。")
-    
 generate_summary_btn = st.sidebar.button("要約を生成")
 output_btn = st.sidebar.button("ファイルを出力")
 output_format = st.sidebar.radio("出力形式を選択してください", ("Word", "PDF"))
@@ -134,10 +133,9 @@ if sidebar_file is not None:
                 converted_text = ""
                 break
 
-    # タブで表示切替（元のテキストと変換後テキスト）
+    # タブで元のテキストと変換後テキストを表示（各ウィンドウは独立してスクロール可能）
     if converted_text:
         tabs = st.tabs(["元のテキスト", "変換後のテキスト"])
-        # 元のテキストタブ
         with tabs[0]:
             html_original = f"""
             <!DOCTYPE html>
@@ -174,7 +172,6 @@ if sidebar_file is not None:
             """
             components.html(html_original, height=600, scrolling=True)
         
-        # 変換後テキストタブ
         with tabs[1]:
             html_converted = f"""
             <!DOCTYPE html>
@@ -211,7 +208,7 @@ if sidebar_file is not None:
             """
             components.html(html_converted, height=600, scrolling=True)
     
-    # ファイル出力（サイドバー）
+    # サイドバーのファイル出力ボタンによるファイル出力処理
     if output_btn:
         if output_format == "Word":
             try:
@@ -235,7 +232,7 @@ if sidebar_file is not None:
             except Exception as e:
                 st.error("PDFファイルの生成に失敗しました：" + str(e))
     
-    # 要約機能
+    # 要約機能（発言者整理・セクショニング指示付き）
     summary_text = ""
     if generate_summary_btn:
         summarize_prompt = (
@@ -254,6 +251,12 @@ if sidebar_file is not None:
             ]
         }
         with st.spinner("GeminiAPIで要約生成中..."):
+            summary_progress_bar = st.progress(0)
+            summary_progress_text = st.empty()
+            for percent in range(1, 101):
+                time.sleep(0.005)
+                summary_progress_bar.progress(percent)
+                summary_progress_text.text(f"{percent}%")
             for attempt in range(1, max_attempts + 1):
                 try:
                     summary_response = requests.post(api_url, headers=headers, json=summary_payload, timeout=timeout_seconds)
