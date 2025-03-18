@@ -6,44 +6,44 @@ import requests
 from docx import Document
 from utils.file_processor import extract_text
 
-# グローバルCSSの追加（近未来的なデザイン）
+# グローバルCSS（Robotoフォント採用、近未来感かつ見やすいスタイル）
 st.markdown("""
-<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
-/* 全体の背景、フォント、色の設定 */
+/* 全体背景とフォント */
 body {
-    background: #121212;
-    font-family: 'Orbitron', sans-serif;
-    color: #00FFCC;
+    background-color: #1a1a1a;
+    font-family: 'Roboto', sans-serif;
+    color: #F0F0F0;
 }
-/* タイトルや見出しの色 */
-h1, h2, h3, h4, h5, h6 {
-    color: #00FFCC;
+/* タイトル・見出しのスタイル */
+h1, h2, h3 {
+    color: #00CCFF;
 }
-/* ボタン類のスタイル */
+/* ボタンのスタイル */
 div.stButton > button, div.stDownloadButton > button {
-    background-color: #00FFCC !important;
-    color: #121212 !important;
+    background-color: #00CCFF !important;
+    color: #1a1a1a !important;
     border: none !important;
     border-radius: 8px !important;
-    font-weight: bold;
+    font-weight: 600;
     padding: 10px 20px !important;
 }
 /* テキストエリアのスタイル */
 .stTextArea label, .stTextArea textarea {
-    color: #00FFCC;
-    background: #1e1e1e;
-    border: 1px solid #00FFCC;
+    color: #F0F0F0;
+    background-color: #2a2a2a;
+    border: 1px solid #00CCFF;
 }
-/* Streamlitのマークダウン部分の上書き */
+/* Streamlitのマークダウン部分 */
 .stMarkdown {
-    color: #00FFCC;
+    color: #F0F0F0;
 }
 </style>
 """, unsafe_allow_html=True)
 
 # -------------------------------
-# デバッグ用：secretsの読み込み確認（本番環境では表示しないこと）
+# デバッグ用：secretsの読み込み確認（本番環境では非表示推奨）
 if "GEMINI_API_KEY" in st.secrets:
     st.write("【デバッグ表示】GEMINI_API_KEY:", st.secrets["GEMINI_API_KEY"])
 else:
@@ -65,7 +65,7 @@ if uploaded_file is not None:
         st.error(f"ファイルからテキストを抽出できませんでした: {e}")
         original_text = ""
     
-    # 3. 元のテキストの表示（左側のテキストエリア）
+    # 3. 元のテキストと変換後テキストの表示（横並び）
     col1, col2 = st.columns(2)
     with col1:
         st.subheader("元のテキスト")
@@ -147,7 +147,86 @@ if uploaded_file is not None:
                 converted_text = ""
                 break
 
-    # 6. 要約機能の実装（発言者ごとの整理、セクショニングを含むプロンプト）
+    # 6. 左右のテキストウィンドウを、中央に矢印を挟んで横並びに表示
+    if converted_text:
+        html_code = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            .container {{
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              gap: 20px;
+            }}
+            .custom-window {{
+              background: #222;
+              border: 2px solid #00CCFF;
+              border-radius: 10px;
+              padding: 20px;
+              color: #F0F0F0;
+              font-size: 16px;
+              line-height: 1.6;
+              box-shadow: 0px 4px 12px rgba(0, 0, 0, 0.3);
+              overflow: auto;
+              height: 400px;
+              width: 45%;
+            }}
+            .arrow {{
+              font-size: 64px;
+              color: #00CCFF;
+            }}
+            .custom-window h2 {{
+              margin-top: 0;
+              border-bottom: 2px solid #00CCFF;
+              padding-bottom: 5px;
+            }}
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="custom-window">
+              <h2>元のテキスト</h2>
+              <p>{original_text}</p>
+            </div>
+            <div class="arrow">→</div>
+            <div class="custom-window">
+              <h2>変換後のテキスト</h2>
+              <p>{converted_text}</p>
+            </div>
+          </div>
+        </body>
+        </html>
+        """
+        components.html(html_code, height=450, scrolling=True)
+    
+    # 7. 出力機能（変換後テキストのダウンロード）
+    output_format = st.radio("出力形式を選択してください", ("Word", "PDF"))
+    if st.button("ファイルを出力"):
+        if output_format == "Word":
+            try:
+                doc = Document()
+                doc.add_paragraph(converted_text)
+                output_filename = "converted.docx"
+                doc.save(output_filename)
+                with open(output_filename, "rb") as f:
+                    st.download_button("ダウンロード Word", f, file_name=output_filename)
+                os.remove(output_filename)
+            except Exception as e:
+                st.error("Wordファイルの生成に失敗しました：" + str(e))
+        else:
+            try:
+                output_filename = "converted.pdf"
+                with open(output_filename, "wb") as f:
+                    f.write(converted_text.encode("utf-8"))
+                with open(output_filename, "rb") as f:
+                    st.download_button("ダウンロード PDF", f, file_name=output_filename)
+                os.remove(output_filename)
+            except Exception as e:
+                st.error("PDFファイルの生成に失敗しました：" + str(e))
+    
+    # 8. 要約機能の実装（発言者ごとの整理・セクショニング指示付き）
     summary_text = ""
     if st.button("要約を生成"):
         summarize_prompt = (
@@ -211,125 +290,42 @@ if uploaded_file is not None:
                     st.error("要約処理で予期しないエラーが発生しました：" + str(e))
                     summary_text = ""
                     break
-
-    # 7. CSSを利用したスタイリッシュな表示ウィンドウ（元のテキストと変換後テキストを横並び、中央に矢印）
-    if converted_text:
-        html_code = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <style>
-            body {{
-              background: #121212;
-              font-family: 'Orbitron', sans-serif;
-              color: #00FFCC;
-            }}
-            .container {{
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              gap: 20px;
-            }}
-            .custom-window {{
-              background: linear-gradient(135deg, #2c3e50, #4ca1af);
-              border-radius: 10px;
-              padding: 20px;
-              color: #ecf0f1;
-              font-size: 16px;
-              line-height: 1.5;
-              box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.2);
-              overflow: auto;
-              height: 400px;
-              width: 40%;
-            }}
-            .arrow {{
-              font-size: 64px;
-              color: #00FFCC;
-            }}
-            .custom-window h2 {{
-              margin-top: 0;
-              border-bottom: 2px solid #ecf0f1;
-              padding-bottom: 5px;
-            }}
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="custom-window">
-              <h2>元のテキスト</h2>
-              <p>{original_text}</p>
-            </div>
-            <div class="arrow">→</div>
-            <div class="custom-window">
-              <h2>変換後のテキスト</h2>
-              <p>{converted_text}</p>
-            </div>
-          </div>
-        </body>
-        </html>
-        """
-        components.html(html_code, height=450, scrolling=True)
-    
-    # 8. 出力機能（変換後テキストのダウンロード）
-    output_format = st.radio("出力形式を選択してください", ("Word", "PDF"))
-    if st.button("ファイルを出力"):
-        if output_format == "Word":
-            try:
-                doc = Document()
-                doc.add_paragraph(converted_text)
-                output_filename = "converted.docx"
-                doc.save(output_filename)
-                with open(output_filename, "rb") as f:
-                    st.download_button("ダウンロード Word", f, file_name=output_filename)
-                os.remove(output_filename)
-            except Exception as e:
-                st.error("Wordファイルの生成に失敗しました：" + str(e))
-        else:
-            try:
-                output_filename = "converted.pdf"
-                with open(output_filename, "wb") as f:
-                    f.write(converted_text.encode("utf-8"))
-                with open(output_filename, "rb") as f:
-                    st.download_button("ダウンロード PDF", f, file_name=output_filename)
-                os.remove(output_filename)
-            except Exception as e:
-                st.error("PDFファイルの生成に失敗しました：" + str(e))
-    
-    # 9. 要約結果のスタイリッシュな表示（下部に表示）
-    if summary_text:
-        html_summary = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <style>
-            .summary-container {{
-              background: linear-gradient(135deg, #34495e, #2ecc71);
-              border-radius: 10px;
-              padding: 20px;
-              color: #ecf0f1;
-              font-family: 'Orbitron', sans-serif;
-              font-size: 16px;
-              line-height: 1.5;
-              box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.2);
-              overflow: auto;
-              height: 300px;
-              margin-top: 20px;
-            }}
-            .summary-container h2 {{
-              margin-top: 0;
-              border-bottom: 2px solid #ecf0f1;
-              padding-bottom: 5px;
-            }}
-          </style>
-        </head>
-        <body>
-          <div class="summary-container">
-            <h2>要約結果</h2>
-            <p>{summary_text}</p>
-          </div>
-        </body>
-        </html>
-        """
-        components.html(html_summary, height=350, scrolling=True)
+        
+        # 9. 要約結果のスタイリッシュな表示（横長ウィンドウ）
+        if summary_text:
+            html_summary = f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <style>
+                .summary-container {{
+                  background: #222;
+                  border: 2px solid #00CCFF;
+                  border-radius: 10px;
+                  padding: 20px;
+                  color: #F0F0F0;
+                  font-size: 16px;
+                  line-height: 1.6;
+                  box-shadow: 0px 4px 12px rgba(0, 0, 0, 0.3);
+                  overflow: auto;
+                  width: 100%;
+                  height: 200px;
+                }}
+                .summary-container h2 {{
+                  margin-top: 0;
+                  border-bottom: 2px solid #00CCFF;
+                  padding-bottom: 5px;
+                }}
+              </style>
+            </head>
+            <body>
+              <div class="summary-container">
+                <h2>要約結果</h2>
+                <p>{summary_text}</p>
+              </div>
+            </body>
+            </html>
+            """
+            components.html(html_summary, height=250, scrolling=True)
 else:
     st.write("ファイルをアップロードしてください。")
