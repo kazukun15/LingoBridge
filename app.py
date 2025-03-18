@@ -6,7 +6,7 @@ import requests
 from docx import Document
 from utils.file_processor import extract_text
 
-# グローバルCSS（Robotoフォント採用、背景・ウィンドウは白、モノクロで統一）
+# グローバルCSS（Robotoフォント採用、背景は白、モノクロで統一）
 st.markdown("""
 <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
@@ -60,13 +60,9 @@ if uploaded_file is not None:
         st.error(f"ファイルからテキストを抽出できませんでした: {e}")
         original_text = ""
     
-    # 3. 元のテキストと変換後テキストの表示（左右に配置）
-    col1, col2 = st.columns(2)
-    with col1:
-        st.subheader("元のテキスト")
-        st.text_area("内容", original_text, height=400)
+    # ※元のテキストの表示は行いません。
     
-    # 4. プログレスバー（シミュレーション）
+    # 3. プログレスバー（処理進捗のシミュレーション）
     progress_bar = st.progress(0)
     for percent in range(1, 101):
         time.sleep(0.01)
@@ -79,7 +75,7 @@ if uploaded_file is not None:
     max_attempts = 3
     timeout_seconds = 30
 
-    # 5. 方言→標準語変換処理
+    # 4. 方言→標準語変換処理
     convert_prompt = (
         "以下の文章は方言が含まれています。文章全体の意味を十分に考慮し、"
         "すべての方言表現を標準語に変換してください。変換後の文章のみを出力してください。\n\n"
@@ -142,19 +138,13 @@ if uploaded_file is not None:
                 converted_text = ""
                 break
 
-    # 6. 左右のテキストウィンドウを横並びに表示（中央に太い矢印）
+    # 5. 変換後テキストの表示（全幅のウィンドウ）
     if converted_text:
         html_code = f"""
         <!DOCTYPE html>
         <html>
         <head>
           <style>
-            .container {{
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              gap: 20px;
-            }}
             .custom-window {{
               background: #FFFFFF;
               border: 2px solid #000000;
@@ -165,13 +155,8 @@ if uploaded_file is not None:
               line-height: 1.6;
               box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
               overflow: auto;
+              width: 100%;
               height: 400px;
-              width: 45%;
-            }}
-            .arrow {{
-              font-size: 64px;
-              font-weight: bold;
-              color: #000000;
             }}
             .custom-window h2 {{
               margin-top: 0;
@@ -181,23 +166,16 @@ if uploaded_file is not None:
           </style>
         </head>
         <body>
-          <div class="container">
-            <div class="custom-window">
-              <h2>元のテキスト</h2>
-              <p>{original_text}</p>
-            </div>
-            <div class="arrow">⇒</div>
-            <div class="custom-window">
+          <div class="custom-window">
               <h2>変換後のテキスト</h2>
               <p>{converted_text}</p>
-            </div>
           </div>
         </body>
         </html>
         """
         components.html(html_code, height=450, scrolling=True)
     
-    # 7. 出力機能（変換後テキストのダウンロード）
+    # 6. 出力機能（変換後テキストのダウンロード）
     output_format = st.radio("出力形式を選択してください", ("Word", "PDF"))
     if st.button("ファイルを出力"):
         if output_format == "Word":
@@ -222,7 +200,7 @@ if uploaded_file is not None:
             except Exception as e:
                 st.error("PDFファイルの生成に失敗しました：" + str(e))
     
-    # 8. 要約機能の実装（発言者整理・セクショニング指示付き）
+    # 7. 要約機能の実装（発言者整理・セクショニング指示付き）
     summary_text = ""
     if st.button("要約を生成"):
         summarize_prompt = (
@@ -287,41 +265,9 @@ if uploaded_file is not None:
                     summary_text = ""
                     break
         
-        # 9. 要約結果の表示（横長ウィンドウ）
+        # 8. 要約結果のマークダウン表示（横長ウィンドウ風に）
         if summary_text:
-            html_summary = f"""
-            <!DOCTYPE html>
-            <html>
-            <head>
-              <style>
-                .summary-container {{
-                  background: #FFFFFF;
-                  border: 2px solid #000000;
-                  border-radius: 10px;
-                  padding: 20px;
-                  color: #000000;
-                  font-size: 16px;
-                  line-height: 1.6;
-                  box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
-                  overflow: auto;
-                  width: 100%;
-                  height: 200px;
-                }}
-                .summary-container h2 {{
-                  margin-top: 0;
-                  border-bottom: 2px solid #000000;
-                  padding-bottom: 5px;
-                }}
-              </style>
-            </head>
-            <body>
-              <div class="summary-container">
-                <h2>要約結果</h2>
-                <p>{summary_text}</p>
-              </div>
-            </body>
-            </html>
-            """
-            components.html(html_summary, height=250, scrolling=True)
+            st.markdown("## 要約結果")
+            st.markdown(summary_text)
 else:
     st.write("ファイルをアップロードしてください。")
