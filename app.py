@@ -42,18 +42,9 @@ sidebar_file = st.sidebar.file_uploader("WordまたはPDFファイルをアッ�
 if sidebar_file:
     st.sidebar.write("ファイルがアップロードされました。")
     
-# サイドバーの要約生成ボタン
 generate_summary_btn = st.sidebar.button("要約を生成")
-
-# サイドバーのファイル出力ボタン
 output_btn = st.sidebar.button("ファイルを出力")
 output_format = st.sidebar.radio("出力形式を選択してください", ("Word", "PDF"))
-
-# デバッグ用：secretsの確認（本番では非表示推奨）
-if "GEMINI_API_KEY" in st.secrets:
-    st.write("【デバッグ表示】GEMINI_API_KEY:", st.secrets["GEMINI_API_KEY"])
-else:
-    st.error("【デバッグ表示】'GEMINI_API_KEY' が secrets に存在しません。")
 
 st.title("LingoBridge - 方言→標準語変換＆要約アプリ")
 
@@ -73,7 +64,7 @@ if sidebar_file is not None:
         progress_bar.progress(percent)
         progress_text.text(f"{percent}%")
     
-    # 共通のAPI設定
+    # 共通のAPI設定（APIキーはst.secretsから取得）
     api_key = st.secrets.get("GEMINI_API_KEY", "")
     api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
     headers = {"Content-Type": "application/json"}
@@ -143,7 +134,84 @@ if sidebar_file is not None:
                 converted_text = ""
                 break
 
-    # ファイル出力ボタンがサイドバーから押された場合の処理（変換後テキストを出力）
+    # タブで表示切替（元のテキストと変換後テキスト）
+    if converted_text:
+        tabs = st.tabs(["元のテキスト", "変換後のテキスト"])
+        # 元のテキストタブ
+        with tabs[0]:
+            html_original = f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <style>
+                .text-window {{
+                  background: #FFFFFF;
+                  border: 2px solid #000000;
+                  border-radius: 10px;
+                  padding: 20px;
+                  color: #000000;
+                  font-size: 16px;
+                  line-height: 1.6;
+                  box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
+                  overflow: auto;
+                  width: 100%;
+                  white-space: pre-wrap;
+                }}
+                .header {{
+                  margin-top: 0;
+                  border-bottom: 2px solid #000000;
+                  padding-bottom: 5px;
+                }}
+              </style>
+            </head>
+            <body>
+              <div class="text-window">
+                <h2 class="header">元のテキスト</h2>
+                <p>{original_text}</p>
+              </div>
+            </body>
+            </html>
+            """
+            components.html(html_original, height=600, scrolling=True)
+        
+        # 変換後テキストタブ
+        with tabs[1]:
+            html_converted = f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <style>
+                .text-window {{
+                  background: #FFFFFF;
+                  border: 2px solid #000000;
+                  border-radius: 10px;
+                  padding: 20px;
+                  color: #000000;
+                  font-size: 16px;
+                  line-height: 1.6;
+                  box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
+                  overflow: auto;
+                  width: 100%;
+                  white-space: pre-wrap;
+                }}
+                .header {{
+                  margin-top: 0;
+                  border-bottom: 2px solid #000000;
+                  padding-bottom: 5px;
+                }}
+              </style>
+            </head>
+            <body>
+              <div class="text-window">
+                <h2 class="header">変換後のテキスト</h2>
+                <p>{converted_text}</p>
+              </div>
+            </body>
+            </html>
+            """
+            components.html(html_converted, height=600, scrolling=True)
+    
+    # ファイル出力（サイドバー）
     if output_btn:
         if output_format == "Word":
             try:
@@ -167,63 +235,7 @@ if sidebar_file is not None:
             except Exception as e:
                 st.error("PDFファイルの生成に失敗しました：" + str(e))
     
-    # 元のテキストと変換後テキストを横並びに表示（各ウィンドウは独立してスクロール可能、中央に太い矢印）
-    if converted_text:
-        html_code = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <style>
-            .container {{
-              display: flex;
-              flex-direction: row;
-              align-items: flex-start;
-              gap: 20px;
-            }}
-            .text-window {{
-              background: #FFFFFF;
-              border: 2px solid #000000;
-              border-radius: 10px;
-              padding: 20px;
-              color: #000000;
-              font-size: 16px;
-              line-height: 1.6;
-              box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
-              overflow: auto;
-              width: 48%;
-              white-space: pre-wrap;
-            }}
-            .arrow {{
-              font-size: 64px;
-              font-weight: bold;
-              color: #000000;
-              align-self: center;
-            }}
-            .header {{
-              margin-top: 0;
-              border-bottom: 2px solid #000000;
-              padding-bottom: 5px;
-            }}
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="text-window">
-              <h2 class="header">元のテキスト</h2>
-              <p>{original_text}</p>
-            </div>
-            <div class="arrow">⇒</div>
-            <div class="text-window">
-              <h2 class="header">変換後のテキスト</h2>
-              <p>{converted_text}</p>
-            </div>
-          </div>
-        </body>
-        </html>
-        """
-        components.html(html_code, height=600, scrolling=True)
-    
-    # 要約機能（発言者整理・セクショニング指示付き）
+    # 要約機能
     summary_text = ""
     if generate_summary_btn:
         summarize_prompt = (
