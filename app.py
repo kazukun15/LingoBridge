@@ -37,12 +37,19 @@ div.stButton > button, div.stDownloadButton > button {
 </style>
 """, unsafe_allow_html=True)
 
-# サイドバーにファイルアップロード
+# サイドバーにファイルアップロードと各種ボタンを配置
 sidebar_file = st.sidebar.file_uploader("WordまたはPDFファイルをアップロードしてください", type=["docx", "pdf"])
 if sidebar_file:
     st.sidebar.write("ファイルがアップロードされました。")
+    
+# サイドバーの要約生成ボタン
+generate_summary_btn = st.sidebar.button("要約を生成")
 
-# デバッグ用：secretsの読み込み確認（本番環境では非表示推奨）
+# サイドバーのファイル出力ボタン
+output_btn = st.sidebar.button("ファイルを出力")
+output_format = st.sidebar.radio("出力形式を選択してください", ("Word", "PDF"))
+
+# デバッグ用：secretsの確認（本番では非表示推奨）
 if "GEMINI_API_KEY" in st.secrets:
     st.write("【デバッグ表示】GEMINI_API_KEY:", st.secrets["GEMINI_API_KEY"])
 else:
@@ -136,7 +143,31 @@ if sidebar_file is not None:
                 converted_text = ""
                 break
 
-    # 元のテキストと変換後テキストを横並びに表示（カスタムウィンドウ内、改行反映）
+    # ファイル出力ボタンがサイドバーから押された場合の処理（変換後テキストを出力）
+    if output_btn:
+        if output_format == "Word":
+            try:
+                doc = Document()
+                doc.add_paragraph(converted_text)
+                output_filename = "converted.docx"
+                doc.save(output_filename)
+                with open(output_filename, "rb") as f:
+                    st.sidebar.download_button("ダウンロード Word", f, file_name=output_filename)
+                os.remove(output_filename)
+            except Exception as e:
+                st.error("Wordファイルの生成に失敗しました：" + str(e))
+        else:
+            try:
+                output_filename = "converted.pdf"
+                with open(output_filename, "wb") as f:
+                    f.write(converted_text.encode("utf-8"))
+                with open(output_filename, "rb") as f:
+                    st.sidebar.download_button("ダウンロード PDF", f, file_name=output_filename)
+                os.remove(output_filename)
+            except Exception as e:
+                st.error("PDFファイルの生成に失敗しました：" + str(e))
+    
+    # 元のテキストと変換後テキストを横並びに表示（各ウィンドウは独立してスクロール可能、中央に太い矢印）
     if converted_text:
         html_code = f"""
         <!DOCTYPE html>
@@ -192,34 +223,9 @@ if sidebar_file is not None:
         """
         components.html(html_code, height=600, scrolling=True)
     
-    # 出力機能（変換後テキストのダウンロード）
-    output_format = st.radio("出力形式を選択してください", ("Word", "PDF"))
-    if st.button("ファイルを出力"):
-        if output_format == "Word":
-            try:
-                doc = Document()
-                doc.add_paragraph(converted_text)
-                output_filename = "converted.docx"
-                doc.save(output_filename)
-                with open(output_filename, "rb") as f:
-                    st.download_button("ダウンロード Word", f, file_name=output_filename)
-                os.remove(output_filename)
-            except Exception as e:
-                st.error("Wordファイルの生成に失敗しました：" + str(e))
-        else:
-            try:
-                output_filename = "converted.pdf"
-                with open(output_filename, "wb") as f:
-                    f.write(converted_text.encode("utf-8"))
-                with open(output_filename, "rb") as f:
-                    st.download_button("ダウンロード PDF", f, file_name=output_filename)
-                os.remove(output_filename)
-            except Exception as e:
-                st.error("PDFファイルの生成に失敗しました：" + str(e))
-    
-    # 要約機能の実装（発言者整理・セクショニング指示付き）
+    # 要約機能（発言者整理・セクショニング指示付き）
     summary_text = ""
-    if st.button("要約を生成"):
+    if generate_summary_btn:
         summarize_prompt = (
             "以下は町議会の議事録です。議事録を要約する際、まず議題ごとにセクションに分割し、"
             "各セクション内で発言者ごとの情報を整理してください。具体的には、主要な議題、決定事項、"
@@ -282,7 +288,6 @@ if sidebar_file is not None:
                     summary_text = ""
                     break
         
-        # 要約結果をマークダウン形式で表示
         if summary_text:
             st.markdown("## 要約結果")
             st.markdown(summary_text)
