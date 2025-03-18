@@ -60,9 +60,9 @@ if uploaded_file is not None:
         st.error(f"ファイルからテキストを抽出できませんでした: {e}")
         original_text = ""
     
-    # ※元のテキストの表示は行いません。
-    
-    # 3. プログレスバー（処理進捗のシミュレーション）
+    # ※元のテキストは後述のウィンドウ内にのみ表示します。
+
+    # 3. プログレスバー（シミュレーション）
     progress_bar = st.progress(0)
     for percent in range(1, 101):
         time.sleep(0.01)
@@ -138,14 +138,21 @@ if uploaded_file is not None:
                 converted_text = ""
                 break
 
-    # 5. 変換後テキストの表示（全幅のウィンドウ）
+    # 5. 変換後テキストの表示（元のテキストと変換後テキストを1組のウィンドウで表示）
     if converted_text:
+        # カスタムウィンドウ内では、white-space: pre-wrap; を指定して改行を反映
         html_code = f"""
         <!DOCTYPE html>
         <html>
         <head>
           <style>
-            .custom-window {{
+            .container {{
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              gap: 20px;
+            }}
+            .text-window {{
               background: #FFFFFF;
               border: 2px solid #000000;
               border-radius: 10px;
@@ -156,9 +163,14 @@ if uploaded_file is not None:
               box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
               overflow: auto;
               width: 100%;
-              height: 400px;
+              white-space: pre-wrap;
             }}
-            .custom-window h2 {{
+            .arrow {{
+              font-size: 64px;
+              font-weight: bold;
+              color: #000000;
+            }}
+            .header {{
               margin-top: 0;
               border-bottom: 2px solid #000000;
               padding-bottom: 5px;
@@ -166,14 +178,21 @@ if uploaded_file is not None:
           </style>
         </head>
         <body>
-          <div class="custom-window">
-              <h2>変換後のテキスト</h2>
+          <div class="container">
+            <div class="text-window">
+              <h2 class="header">元のテキスト</h2>
+              <p>{original_text}</p>
+            </div>
+            <div class="arrow">⇒</div>
+            <div class="text-window">
+              <h2 class="header">変換後のテキスト</h2>
               <p>{converted_text}</p>
+            </div>
           </div>
         </body>
         </html>
         """
-        components.html(html_code, height=450, scrolling=True)
+        components.html(html_code, height=600, scrolling=True)
     
     # 6. 出力機能（変換後テキストのダウンロード）
     output_format = st.radio("出力形式を選択してください", ("Word", "PDF"))
@@ -265,7 +284,7 @@ if uploaded_file is not None:
                     summary_text = ""
                     break
         
-        # 8. 要約結果のマークダウン表示（横長ウィンドウ風に）
+        # 8. 要約結果のマークダウン表示（横長ウィンドウ風）
         if summary_text:
             st.markdown("## 要約結果")
             st.markdown(summary_text)
