@@ -37,7 +37,6 @@ div.stButton > button, div.stDownloadButton > button {
 }
 </style>
 """, unsafe_allow_html=True)
-st.set_page_config(layout="wide")
 
 # サイドバーにファイルアップロードとボタン類を配置
 sidebar_file = st.sidebar.file_uploader("WordまたはPDFファイルをアップロードしてください", type=["docx", "pdf"])
