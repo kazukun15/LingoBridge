@@ -6,38 +6,33 @@ import requests
 from docx import Document
 from utils.file_processor import extract_text
 
-# グローバルCSS（Robotoフォント採用、近未来感かつ見やすいスタイル）
+# グローバルCSS（Robotoフォント採用、背景・ウィンドウは白、モノクロで統一）
 st.markdown("""
 <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
-/* 全体背景とフォント */
 body {
-    background-color: #1a1a1a;
+    background-color: #FFFFFF;
     font-family: 'Roboto', sans-serif;
-    color: #F0F0F0;
+    color: #000000;
 }
-/* タイトル・見出しのスタイル */
 h1, h2, h3 {
-    color: #00CCFF;
+    color: #000000;
 }
-/* ボタンのスタイル */
 div.stButton > button, div.stDownloadButton > button {
-    background-color: #00CCFF !important;
-    color: #1a1a1a !important;
+    background-color: #000000 !important;
+    color: #FFFFFF !important;
     border: none !important;
     border-radius: 8px !important;
     font-weight: 600;
     padding: 10px 20px !important;
 }
-/* テキストエリアのスタイル */
 .stTextArea label, .stTextArea textarea {
-    color: #F0F0F0;
-    background-color: #2a2a2a;
-    border: 1px solid #00CCFF;
+    color: #000000;
+    background-color: #FFFFFF;
+    border: 1px solid #000000;
 }
-/* Streamlitのマークダウン部分 */
 .stMarkdown {
-    color: #F0F0F0;
+    color: #000000;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -65,13 +60,13 @@ if uploaded_file is not None:
         st.error(f"ファイルからテキストを抽出できませんでした: {e}")
         original_text = ""
     
-    # 3. 元のテキストと変換後テキストの表示（横並び）
+    # 3. 元のテキストと変換後テキストの表示（左右に配置）
     col1, col2 = st.columns(2)
     with col1:
         st.subheader("元のテキスト")
         st.text_area("内容", original_text, height=400)
     
-    # 4. プログレスバー（処理進捗のシミュレーション）
+    # 4. プログレスバー（シミュレーション）
     progress_bar = st.progress(0)
     for percent in range(1, 101):
         time.sleep(0.01)
@@ -147,7 +142,7 @@ if uploaded_file is not None:
                 converted_text = ""
                 break
 
-    # 6. 左右のテキストウィンドウを、中央に矢印を挟んで横並びに表示
+    # 6. 左右のテキストウィンドウを横並びに表示（中央に太い矢印）
     if converted_text:
         html_code = f"""
         <!DOCTYPE html>
@@ -161,25 +156,26 @@ if uploaded_file is not None:
               gap: 20px;
             }}
             .custom-window {{
-              background: #222;
-              border: 2px solid #00CCFF;
+              background: #FFFFFF;
+              border: 2px solid #000000;
               border-radius: 10px;
               padding: 20px;
-              color: #F0F0F0;
+              color: #000000;
               font-size: 16px;
               line-height: 1.6;
-              box-shadow: 0px 4px 12px rgba(0, 0, 0, 0.3);
+              box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
               overflow: auto;
               height: 400px;
               width: 45%;
             }}
             .arrow {{
               font-size: 64px;
-              color: #00CCFF;
+              font-weight: bold;
+              color: #000000;
             }}
             .custom-window h2 {{
               margin-top: 0;
-              border-bottom: 2px solid #00CCFF;
+              border-bottom: 2px solid #000000;
               padding-bottom: 5px;
             }}
           </style>
@@ -190,7 +186,7 @@ if uploaded_file is not None:
               <h2>元のテキスト</h2>
               <p>{original_text}</p>
             </div>
-            <div class="arrow">→</div>
+            <div class="arrow">⇒</div>
             <div class="custom-window">
               <h2>変換後のテキスト</h2>
               <p>{converted_text}</p>
@@ -226,7 +222,7 @@ if uploaded_file is not None:
             except Exception as e:
                 st.error("PDFファイルの生成に失敗しました：" + str(e))
     
-    # 8. 要約機能の実装（発言者ごとの整理・セクショニング指示付き）
+    # 8. 要約機能の実装（発言者整理・セクショニング指示付き）
     summary_text = ""
     if st.button("要約を生成"):
         summarize_prompt = (
@@ -291,7 +287,7 @@ if uploaded_file is not None:
                     summary_text = ""
                     break
         
-        # 9. 要約結果のスタイリッシュな表示（横長ウィンドウ）
+        # 9. 要約結果の表示（横長ウィンドウ）
         if summary_text:
             html_summary = f"""
             <!DOCTYPE html>
@@ -299,21 +295,21 @@ if uploaded_file is not None:
             <head>
               <style>
                 .summary-container {{
-                  background: #222;
-                  border: 2px solid #00CCFF;
+                  background: #FFFFFF;
+                  border: 2px solid #000000;
                   border-radius: 10px;
                   padding: 20px;
-                  color: #F0F0F0;
+                  color: #000000;
                   font-size: 16px;
                   line-height: 1.6;
-                  box-shadow: 0px 4px 12px rgba(0, 0, 0, 0.3);
+                  box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
                   overflow: auto;
                   width: 100%;
                   height: 200px;
                 }}
                 .summary-container h2 {{
                   margin-top: 0;
-                  border-bottom: 2px solid #00CCFF;
+                  border-bottom: 2px solid #000000;
                   padding-bottom: 5px;
                 }}
               </style>
