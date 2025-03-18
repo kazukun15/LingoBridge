@@ -6,6 +6,42 @@ import requests
 from docx import Document
 from utils.file_processor import extract_text
 
+# グローバルCSSの追加（近未来的なデザイン）
+st.markdown("""
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+<style>
+/* 全体の背景、フォント、色の設定 */
+body {
+    background: #121212;
+    font-family: 'Orbitron', sans-serif;
+    color: #00FFCC;
+}
+/* タイトルや見出しの色 */
+h1, h2, h3, h4, h5, h6 {
+    color: #00FFCC;
+}
+/* ボタン類のスタイル */
+div.stButton > button, div.stDownloadButton > button {
+    background-color: #00FFCC !important;
+    color: #121212 !important;
+    border: none !important;
+    border-radius: 8px !important;
+    font-weight: bold;
+    padding: 10px 20px !important;
+}
+/* テキストエリアのスタイル */
+.stTextArea label, .stTextArea textarea {
+    color: #00FFCC;
+    background: #1e1e1e;
+    border: 1px solid #00FFCC;
+}
+/* Streamlitのマークダウン部分の上書き */
+.stMarkdown {
+    color: #00FFCC;
+}
+</style>
+""", unsafe_allow_html=True)
+
 # -------------------------------
 # デバッグ用：secretsの読み込み確認（本番環境では表示しないこと）
 if "GEMINI_API_KEY" in st.secrets:
@@ -111,7 +147,7 @@ if uploaded_file is not None:
                 converted_text = ""
                 break
 
-    # 6. 要約機能の実装（発言者別の整理・セクショニングを含むプロンプト）
+    # 6. 要約機能の実装（発言者ごとの整理、セクショニングを含むプロンプト）
     summary_text = ""
     if st.button("要約を生成"):
         summarize_prompt = (
@@ -176,18 +212,22 @@ if uploaded_file is not None:
                     summary_text = ""
                     break
 
-    # 7. CSSを利用したスタイリッシュな表示ウィンドウ（変換後テキストと要約結果）
-    # 変換結果と要約結果が存在する場合に表示します。
-    if converted_text or summary_text:
-        # HTML 内の {converted_text} や {summary_text} は必要に応じてエスケープ処理してください。
+    # 7. CSSを利用したスタイリッシュな表示ウィンドウ（元のテキストと変換後テキストを横並び、中央に矢印）
+    if converted_text:
         html_code = f"""
         <!DOCTYPE html>
         <html>
         <head>
           <style>
+            body {{
+              background: #121212;
+              font-family: 'Orbitron', sans-serif;
+              color: #00FFCC;
+            }}
             .container {{
               display: flex;
-              justify-content: space-between;
+              align-items: center;
+              justify-content: center;
               gap: 20px;
             }}
             .custom-window {{
@@ -195,13 +235,16 @@ if uploaded_file is not None:
               border-radius: 10px;
               padding: 20px;
               color: #ecf0f1;
-              font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
               font-size: 16px;
               line-height: 1.5;
               box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.2);
               overflow: auto;
               height: 400px;
-              width: 48%;
+              width: 40%;
+            }}
+            .arrow {{
+              font-size: 64px;
+              color: #00FFCC;
             }}
             .custom-window h2 {{
               margin-top: 0;
@@ -213,12 +256,13 @@ if uploaded_file is not None:
         <body>
           <div class="container">
             <div class="custom-window">
+              <h2>元のテキスト</h2>
+              <p>{original_text}</p>
+            </div>
+            <div class="arrow">→</div>
+            <div class="custom-window">
               <h2>変換後のテキスト</h2>
               <p>{converted_text}</p>
-            </div>
-            <div class="custom-window">
-              <h2>要約結果</h2>
-              <p>{summary_text}</p>
             </div>
           </div>
         </body>
@@ -250,5 +294,42 @@ if uploaded_file is not None:
                 os.remove(output_filename)
             except Exception as e:
                 st.error("PDFファイルの生成に失敗しました：" + str(e))
+    
+    # 9. 要約結果のスタイリッシュな表示（下部に表示）
+    if summary_text:
+        html_summary = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            .summary-container {{
+              background: linear-gradient(135deg, #34495e, #2ecc71);
+              border-radius: 10px;
+              padding: 20px;
+              color: #ecf0f1;
+              font-family: 'Orbitron', sans-serif;
+              font-size: 16px;
+              line-height: 1.5;
+              box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.2);
+              overflow: auto;
+              height: 300px;
+              margin-top: 20px;
+            }}
+            .summary-container h2 {{
+              margin-top: 0;
+              border-bottom: 2px solid #ecf0f1;
+              padding-bottom: 5px;
+            }}
+          </style>
+        </head>
+        <body>
+          <div class="summary-container">
+            <h2>要約結果</h2>
+            <p>{summary_text}</p>
+          </div>
+        </body>
+        </html>
+        """
+        components.html(html_summary, height=350, scrolling=True)
 else:
     st.write("ファイルをアップロードしてください。")
