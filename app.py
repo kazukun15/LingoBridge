@@ -49,7 +49,7 @@ if "GEMINI_API_KEY" in st.secrets:
 else:
     st.error("【デバッグ表示】'GEMINI_API_KEY' が secrets に存在しません。")
 
-st.title("LingoBridge - 方言→標準語変換＆要約アプリ")
+st.title("LingoBridge - 方言から標準語変換＋要約アプリ")
 
 # 1. サイドバーでファイルアップロードした場合、メイン画面にテキスト抽出などの処理を表示
 if sidebar_file is not None:
