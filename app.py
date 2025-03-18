@@ -1,12 +1,13 @@
 import streamlit as st
 import streamlit.components.v1 as components
-import time
+import asyncio
 import os
-import requests
+import time
+import httpx
 from docx import Document
 from utils.file_processor import extract_text
 
-# グローバルCSS（Robotoフォント採用、背景は白、モノクロで統一、全体が見えるよう自動改行）
+# グローバルCSS（Robotoフォント採用、背景は白、モノクロで統一、テキストは自動改行）
 st.markdown("""
 <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
@@ -37,16 +38,18 @@ div.stButton > button, div.stDownloadButton > button {
 </style>
 """, unsafe_allow_html=True)
 
-# サイドバーにファイルアップロードと各種ボタンを配置
+# サイドバーにファイルアップロードとボタン類を配置
 sidebar_file = st.sidebar.file_uploader("WordまたはPDFファイルをアップロードしてください", type=["docx", "pdf"])
 if sidebar_file:
     st.sidebar.write("ファイルがアップロードされました。")
+
 generate_summary_btn = st.sidebar.button("要約を生成")
 output_btn = st.sidebar.button("ファイルを出力")
 output_format = st.sidebar.radio("出力形式を選択してください", ("Word", "PDF"))
 
 st.title("LingoBridge - 方言→標準語変換＆要約アプリ")
 
+# APIキーはデバッグ表示から削除（セキュリティ対策）
 if sidebar_file is not None:
     try:
         original_text = extract_text(sidebar_file)
@@ -55,7 +58,7 @@ if sidebar_file is not None:
         st.error(f"ファイルからテキストを抽出できませんでした: {e}")
         original_text = ""
     
-    # プログレスバー（％表示付き）
+    # 進捗バー（％表示付き）
     progress_bar = st.progress(0)
     progress_text = st.empty()
     for percent in range(1, 101):
@@ -63,14 +66,40 @@ if sidebar_file is not None:
         progress_bar.progress(percent)
         progress_text.text(f"{percent}%")
     
-    # 共通のAPI設定（APIキーはst.secretsから取得）
+    # 共通のAPI設定
     api_key = st.secrets.get("GEMINI_API_KEY", "")
     api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
     headers = {"Content-Type": "application/json"}
     max_attempts = 3
     timeout_seconds = 30
 
-    # 方言→標準語変換処理
+    # 非同期処理で API 呼び出しを行う共通関数
+    async def fetch_api(payload: dict) -> dict:
+        attempt = 1
+        while attempt <= max_attempts:
+            try:
+                async with httpx.AsyncClient(timeout=timeout_seconds) as client:
+                    response = await client.post(api_url, headers=headers, json=payload)
+                    response.raise_for_status()
+                    return response.json()
+            except (httpx.TimeoutException) as te:
+                st.warning(f"タイムアウト発生：{attempt}回目のリトライ中です...")
+                if attempt == max_attempts:
+                    st.error("リクエストがタイムアウトしました。")
+                    return {}
+                else:
+                    await asyncio.sleep(5)
+                    attempt += 1
+            except (httpx.RequestError) as re:
+                st.error("接続エラーが発生しました。")
+                st.error(str(re))
+                return {}
+            except Exception as e:
+                st.error("予期しないエラーが発生しました：" + str(e))
+                return {}
+        return {}
+
+    # 1. 方言→標準語変換処理
     convert_prompt = (
         "以下の文章は方言が含まれています。文章全体の意味を十分に考慮し、"
         "すべての方言表現を標準語に変換してください。変換後の文章のみを出力してください。\n\n"
@@ -78,62 +107,30 @@ if sidebar_file is not None:
     )
     convert_payload = {
         "contents": [
-            {
-                "parts": [
-                    {"text": convert_prompt}
-                ]
-            }
+            {"parts": [{"text": convert_prompt}]}
         ]
     }
     st.write("GeminiAPI に変換処理のリクエストを送信中...")
-    converted_text = ""
     with st.spinner("GeminiAPIで変換中..."):
-        for attempt in range(1, max_attempts + 1):
-            try:
-                response = requests.post(api_url, headers=headers, json=convert_payload, timeout=timeout_seconds)
-                response.raise_for_status()
-                response_json = response.json()
-                
-                with st.expander("変換処理 APIレスポンス (JSON)"):
-                    st.json(response_json, expanded=False)
-                
-                if "candidates" in response_json and len(response_json["candidates"]) > 0:
-                    try:
-                        converted_text = response_json["candidates"][0]["content"]["parts"][0]["text"].strip()
-                    except (KeyError, IndexError):
-                        st.error("変換処理レスポンス構造が想定と異なります。")
-                        st.write("レスポンス内容:", response_json)
-                        converted_text = ""
-                elif "text" in response_json:
-                    converted_text = response_json["text"].strip()
-                else:
-                    st.error("変換処理 APIレスポンスに想定するキーが存在しません。")
-                    st.write("レスポンス内容:", response_json)
-                    converted_text = ""
-                st.write("変換完了。")
-                break
-            except requests.exceptions.Timeout as te:
-                st.warning(f"変換処理でタイムアウトが発生しました。{attempt}回目のリトライ中です...")
-                if attempt == max_attempts:
-                    st.error("変換処理のリクエストがタイムアウトしました。")
-                    converted_text = ""
-                else:
-                    time.sleep(5)
-            except requests.exceptions.ConnectionError as ce:
-                st.error("変換処理接続エラー：APIエンドポイントに到達できません。")
-                st.error(str(ce))
-                converted_text = ""
-                break
-            except requests.exceptions.HTTPError as he:
-                st.error("変換処理HTTPエラー：" + str(he))
-                converted_text = ""
-                break
-            except Exception as e:
-                st.error("変換処理で予期しないエラーが発生しました：" + str(e))
-                converted_text = ""
-                break
-
-    # タブで元のテキストと変換後テキストを表示（各ウィンドウは独立してスクロール可能）
+        response_json = asyncio.run(fetch_api(convert_payload))
+        st.expander("変換処理 APIレスポンス (JSON)", expanded=False).write(response_json)
+    
+    if "candidates" in response_json and len(response_json["candidates"]) > 0:
+        try:
+            converted_text = response_json["candidates"][0]["content"]["parts"][0]["text"].strip()
+        except (KeyError, IndexError):
+            st.error("変換処理レスポンス構造が想定と異なります。")
+            st.write("レスポンス内容:", response_json)
+            converted_text = ""
+    elif "text" in response_json:
+        converted_text = response_json["text"].strip()
+    else:
+        st.error("変換処理 APIレスポンスに想定するキーが存在しません。")
+        st.write("レスポンス内容:", response_json)
+        converted_text = ""
+    st.write("変換完了。")
+    
+    # タブで元のテキストと変換後テキストを表示（各ウィンドウは自動改行で全体が見える）
     if converted_text:
         tabs = st.tabs(["元のテキスト", "変換後のテキスト"])
         with tabs[0]:
@@ -208,7 +205,7 @@ if sidebar_file is not None:
             """
             components.html(html_converted, height=600, scrolling=True)
     
-    # サイドバーのファイル出力ボタンによるファイル出力処理
+    # サイドバーのファイル出力
     if output_btn:
         if output_format == "Word":
             try:
@@ -232,7 +229,7 @@ if sidebar_file is not None:
             except Exception as e:
                 st.error("PDFファイルの生成に失敗しました：" + str(e))
     
-    # 要約機能（発言者整理・セクショニング指示付き）
+    # 要約機能
     summary_text = ""
     if generate_summary_btn:
         summarize_prompt = (
@@ -243,11 +240,7 @@ if sidebar_file is not None:
         )
         summary_payload = {
             "contents": [
-                {
-                    "parts": [
-                        {"text": summarize_prompt}
-                    ]
-                }
+                {"parts": [{"text": summarize_prompt}]}
             ]
         }
         with st.spinner("GeminiAPIで要約生成中..."):
@@ -259,10 +252,11 @@ if sidebar_file is not None:
                 summary_progress_text.text(f"{percent}%")
             for attempt in range(1, max_attempts + 1):
                 try:
-                    summary_response = requests.post(api_url, headers=headers, json=summary_payload, timeout=timeout_seconds)
-                    summary_response.raise_for_status()
-                    summary_json = summary_response.json()
-                    
+                    summary_response = await_call_api(summary_payload)
+                    if not summary_response:
+                        summary_text = ""
+                        break
+                    summary_json = summary_response
                     with st.expander("要約処理 APIレスポンス (JSON)"):
                         st.json(summary_json, expanded=False)
                     
@@ -308,3 +302,33 @@ if sidebar_file is not None:
             st.markdown(summary_text)
 else:
     st.write("ファイルをアップロードしてください。")
+
+
+# 非同期API呼び出しを同期的に実行するための関数
+def await_call_api(payload: dict) -> dict:
+    async def fetch_api():
+        attempt = 1
+        while attempt <= max_attempts:
+            try:
+                async with httpx.AsyncClient(timeout=timeout_seconds) as client:
+                    resp = await client.post(api_url, headers=headers, json=payload)
+                    resp.raise_for_status()
+                    return resp.json()
+            except httpx.TimeoutException as te:
+                st.warning(f"非同期処理タイムアウト：{attempt}回目のリトライ中...")
+                if attempt == max_attempts:
+                    st.error("非同期処理のリクエストがタイムアウトしました。")
+                    return {}
+                else:
+                    await asyncio.sleep(5)
+                    attempt += 1
+            except httpx.RequestError as re:
+                st.error("非同期処理接続エラーが発生しました。")
+                st.error(str(re))
+                return {}
+            except Exception as e:
+                st.error("非同期処理で予期しないエラーが発生しました：" + str(e))
+                return {}
+        return {}
+    import asyncio, httpx
+    return asyncio.run(fetch_api())
