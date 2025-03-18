@@ -7,7 +7,6 @@ from utils.file_processor import extract_text  # utils/file_processor.py に実�
 
 # -------------------------------
 # デバッグ用：secretsの読み込み確認
-# 本番環境ではAPIキーを画面表示しないでください。
 if "GEMINI_API_KEY" in st.secrets:
     st.write("【デバッグ表示】GEMINI_API_KEY:", st.secrets["GEMINI_API_KEY"])
 else:
@@ -38,11 +37,11 @@ if uploaded_file is not None:
     # 4. プログレスバー（変換処理の進捗をシミュレーション）
     progress_bar = st.progress(0)
     for percent in range(1, 101):
-        time.sleep(0.01)  # UI更新用（処理時間に応じて調整してください）
+        time.sleep(0.01)
         progress_bar.progress(percent)
     
-    # 5. Google Generative Language API (Gemini) への呼び出し
-    # 適切なプロンプトに書き換えています。
+    # 5. GeminiAPI 呼び出しの準備
+    # 適切なプロンプト（方言を標準語に変換する指示）を付加
     prompt = (
         "以下の文章は方言が含まれています。文章全体の意味を十分に考慮し、"
         "すべての方言表現を標準語に変換してください。変換後の文章のみを出力してください。\n\n"
@@ -59,7 +58,7 @@ if uploaded_file is not None:
         ]
     }
     
-    # secretsからAPIキーを取得し、URLに付与
+    # secretsからAPIキーを取得し、URLに埋め込み
     api_key = st.secrets.get("GEMINI_API_KEY", "")
     api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
     
@@ -69,38 +68,48 @@ if uploaded_file is not None:
     
     st.write("GeminiAPI にリクエストを送信中...")
     
-    try:
-        response = requests.post(api_url, headers=headers, json=payload, timeout=10)
-        response.raise_for_status()  # HTTPエラーがあれば例外を発生
-        response_json = response.json()
-        
-        # JSONレスポンスを折り畳みで表示
-        with st.expander("APIレスポンス (JSON)"):
-            st.json(response_json, expanded=False)
-        
-        # レスポンス例: {"contents": [{"parts": [{"text": "変換されたテキスト"}]}]}
+    # タイムアウトとリトライの設定
+    max_attempts = 3
+    timeout_seconds = 30
+    converted_text = ""
+    for attempt in range(1, max_attempts + 1):
         try:
-            converted_text = response_json["contents"][0]["parts"][0]["text"]
-        except (KeyError, IndexError):
-            st.warning("レスポンス構造が想定と異なります。")
+            response = requests.post(api_url, headers=headers, json=payload, timeout=timeout_seconds)
+            response.raise_for_status()  # HTTPエラーがあれば例外発生
+            response_json = response.json()
+            
+            # JSONレスポンスを折り畳み表示
+            with st.expander("APIレスポンス (JSON)"):
+                st.json(response_json, expanded=False)
+            
+            try:
+                converted_text = response_json["contents"][0]["parts"][0]["text"]
+            except (KeyError, IndexError):
+                st.warning("レスポンス構造が想定と異なります。")
+                converted_text = ""
+                st.write("レスポンス内容:", response_json)
+            st.write("変換完了。")
+            break  # 成功したのでループ終了
+        except requests.exceptions.Timeout as te:
+            st.warning(f"タイムアウトが発生しました。{attempt}回目のリトライ中です...")
+            if attempt == max_attempts:
+                st.error("リクエストがタイムアウトしました。再試行回数の上限に達しました。")
+                converted_text = ""
+            else:
+                time.sleep(5)  # 次の試行前に待機
+        except requests.exceptions.ConnectionError as ce:
+            st.error("接続エラー：APIエンドポイントに到達できません。")
+            st.error(str(ce))
             converted_text = ""
-            st.write("レスポンス内容:", response_json)
-        
-        st.write("変換完了。")
-    except requests.exceptions.ConnectionError as ce:
-        st.error("接続エラー：APIエンドポイントに到達できません。")
-        st.error(str(ce))
-        converted_text = ""
-    except requests.exceptions.Timeout as te:
-        st.error("リクエストがタイムアウトしました。")
-        st.error(str(te))
-        converted_text = ""
-    except requests.exceptions.HTTPError as he:
-        st.error("HTTPエラーが発生しました：" + str(he))
-        converted_text = ""
-    except Exception as e:
-        st.error("予期しないエラーが発生しました：" + str(e))
-        converted_text = ""
+            break
+        except requests.exceptions.HTTPError as he:
+            st.error("HTTPエラーが発生しました：" + str(he))
+            converted_text = ""
+            break
+        except Exception as e:
+            st.error("予期しないエラーが発生しました：" + str(e))
+            converted_text = ""
+            break
     
     with col2:
         st.subheader("変換後のテキスト")
@@ -123,7 +132,7 @@ if uploaded_file is not None:
         else:
             try:
                 output_filename = "converted.pdf"
-                # シンプルなPDF生成（必要に応じてreportlab等を使用してください）
+                # 簡易的なPDF生成例。必要に応じてreportlabなどのライブラリを検討してください
                 with open(output_filename, "wb") as f:
                     f.write(converted_text.encode("utf-8"))
                 with open(output_filename, "rb") as f:
