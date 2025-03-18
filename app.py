@@ -1,9 +1,10 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import time
 import os
 import requests
 from docx import Document
-from utils.file_processor import extract_text  # utils/file_processor.py に実装済み
+from utils.file_processor import extract_text
 
 # -------------------------------
 # デバッグ用：secretsの読み込み確認（本番環境では表示しないこと）
@@ -28,7 +29,7 @@ if uploaded_file is not None:
         st.error(f"ファイルからテキストを抽出できませんでした: {e}")
         original_text = ""
     
-    # 3. 2画面表示（左：元のテキスト、右：変換後のテキスト）
+    # 3. 元のテキストの表示（左側のテキストエリア）
     col1, col2 = st.columns(2)
     with col1:
         st.subheader("元のテキスト")
@@ -53,7 +54,6 @@ if uploaded_file is not None:
         "すべての方言表現を標準語に変換してください。変換後の文章のみを出力してください。\n\n"
         "テキスト:\n" + original_text
     )
-    
     convert_payload = {
         "contents": [
             {
@@ -63,7 +63,6 @@ if uploaded_file is not None:
             }
         ]
     }
-    
     st.write("GeminiAPI に変換処理のリクエストを送信中...")
     converted_text = ""
     with st.spinner("GeminiAPIで変換中..."):
@@ -112,18 +111,14 @@ if uploaded_file is not None:
                 converted_text = ""
                 break
 
-    with col2:
-        st.subheader("変換後のテキスト")
-        st.text_area("内容", converted_text, height=400)
-    
-    # 6. 要約機能の実装（発言者ごとの情報整理・セクショニングを含む）
+    # 6. 要約機能の実装（発言者別の整理・セクショニングを含むプロンプト）
+    summary_text = ""
     if st.button("要約を生成"):
         summarize_prompt = (
-            "以下は町議会の議事録です。議事録を要約する際、各議題ごとにセクションに分け、"
-            "各セクション内で発言者ごとの情報を整理してください。具体的には、主要な議題、"
-            "決定事項、重要な発言、及び今後のアクションアイテムを抽出し、"
-            "誰がどのような意見を述べたのかを明確にしながら、全体の流れを読みやすく簡潔に要約してください。\n\n"
-            "議事録全文:\n" + original_text
+            "以下は町議会の議事録です。議事録を要約する際、まず議題ごとにセクションに分割し、"
+            "各セクション内で発言者ごとの情報を整理してください。具体的には、主要な議題、決定事項、"
+            "重要な発言、及び今後のアクションアイテムを抽出し、誰がどのような意見を述べたのかを明確にしてください。"
+            "\n\n議事録全文:\n" + original_text
         )
         summary_payload = {
             "contents": [
@@ -134,7 +129,6 @@ if uploaded_file is not None:
                 }
             ]
         }
-        summary_text = ""
         with st.spinner("GeminiAPIで要約生成中..."):
             for attempt in range(1, max_attempts + 1):
                 try:
@@ -181,11 +175,58 @@ if uploaded_file is not None:
                     st.error("要約処理で予期しないエラーが発生しました：" + str(e))
                     summary_text = ""
                     break
-        
-        st.subheader("要約結果")
-        st.text_area("内容", summary_text, height=400)
+
+    # 7. CSSを利用したスタイリッシュな表示ウィンドウ（変換後テキストと要約結果）
+    # 変換結果と要約結果が存在する場合に表示します。
+    if converted_text or summary_text:
+        # HTML 内の {converted_text} や {summary_text} は必要に応じてエスケープ処理してください。
+        html_code = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            .container {{
+              display: flex;
+              justify-content: space-between;
+              gap: 20px;
+            }}
+            .custom-window {{
+              background: linear-gradient(135deg, #2c3e50, #4ca1af);
+              border-radius: 10px;
+              padding: 20px;
+              color: #ecf0f1;
+              font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+              font-size: 16px;
+              line-height: 1.5;
+              box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.2);
+              overflow: auto;
+              height: 400px;
+              width: 48%;
+            }}
+            .custom-window h2 {{
+              margin-top: 0;
+              border-bottom: 2px solid #ecf0f1;
+              padding-bottom: 5px;
+            }}
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="custom-window">
+              <h2>変換後のテキスト</h2>
+              <p>{converted_text}</p>
+            </div>
+            <div class="custom-window">
+              <h2>要約結果</h2>
+              <p>{summary_text}</p>
+            </div>
+          </div>
+        </body>
+        </html>
+        """
+        components.html(html_code, height=450, scrolling=True)
     
-    # 7. 出力機能（変換後テキストのダウンロード）
+    # 8. 出力機能（変換後テキストのダウンロード）
     output_format = st.radio("出力形式を選択してください", ("Word", "PDF"))
     if st.button("ファイルを出力"):
         if output_format == "Word":
