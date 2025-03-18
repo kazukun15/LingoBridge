@@ -84,12 +84,13 @@ if uploaded_file is not None:
                 with st.expander("APIレスポンス (JSON)"):
                     st.json(response_json, expanded=False)
                 
-                # トップレベルの "text" キーから変換後テキストを取得
-                if "text" in response_json:
-                    converted_text = response_json["text"].strip()
-                else:
-                    st.error("APIレスポンスに 'text' キーが存在しません。")
-                    st.write("APIレスポンス:", response_json)
+                # レスポンス構造: "candidates"[0]["content"]["parts"][0]["text"]
+                # ここから変換後テキストを取得
+                try:
+                    converted_text = response_json["candidates"][0]["content"]["parts"][0]["text"].strip()
+                except (KeyError, IndexError):
+                    st.error("レスポンス構造が想定と異なります。")
+                    st.write("レスポンス内容:", response_json)
                     converted_text = ""
                 
                 st.write("変換完了。")
