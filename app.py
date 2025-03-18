@@ -6,7 +6,7 @@ from docx import Document
 from utils.file_processor import extract_text  # utils/file_processor.py に実装済み
 
 # -------------------------------
-# デバッグ用：secretsの読み込み確認
+# デバッグ用：secretsの読み込み確認（本番環境では表示しないこと）
 if "GEMINI_API_KEY" in st.secrets:
     st.write("【デバッグ表示】GEMINI_API_KEY:", st.secrets["GEMINI_API_KEY"])
 else:
@@ -34,18 +34,18 @@ if uploaded_file is not None:
         st.subheader("元のテキスト")
         st.text_area("内容", original_text, height=400)
     
-    # 4. プログレスバー（変換処理の進捗をシミュレーション）
+    # 4. プログレスバー（処理進捗のシミュレーション）
     progress_bar = st.progress(0)
     for percent in range(1, 101):
         time.sleep(0.01)
         progress_bar.progress(percent)
     
     # 5. GeminiAPI 呼び出しの準備
-    # 適切なプロンプト（方言を標準語に変換する指示）を付加
+    # プロンプトに区切り文字を入れて、APIが返す内容からノイズを除去できるようにする
     prompt = (
         "以下の文章は方言が含まれています。文章全体の意味を十分に考慮し、"
         "すべての方言表現を標準語に変換してください。変換後の文章のみを出力してください。\n\n"
-        "テキスト:\n" + original_text
+        "---変換開始---\nテキスト:\n" + original_text
     )
     
     payload = {
@@ -58,7 +58,7 @@ if uploaded_file is not None:
         ]
     }
     
-    # secretsからAPIキーを取得し、URLに埋め込み
+    # secretsからAPIキーを取得し、URLに埋め込む
     api_key = st.secrets.get("GEMINI_API_KEY", "")
     api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
     
@@ -72,44 +72,53 @@ if uploaded_file is not None:
     max_attempts = 3
     timeout_seconds = 30
     converted_text = ""
-    for attempt in range(1, max_attempts + 1):
-        try:
-            response = requests.post(api_url, headers=headers, json=payload, timeout=timeout_seconds)
-            response.raise_for_status()  # HTTPエラーがあれば例外発生
-            response_json = response.json()
-            
-            # JSONレスポンスを折り畳み表示
-            with st.expander("APIレスポンス (JSON)"):
-                st.json(response_json, expanded=False)
-            
+    
+    # スピナーを表示して処理中をユーザーに伝える
+    with st.spinner("GeminiAPIで処理中..."):
+        for attempt in range(1, max_attempts + 1):
             try:
-                converted_text = response_json["contents"][0]["parts"][0]["text"]
-            except (KeyError, IndexError):
-                st.warning("レスポンス構造が想定と異なります。")
+                response = requests.post(api_url, headers=headers, json=payload, timeout=timeout_seconds)
+                response.raise_for_status()  # HTTPエラーがあれば例外発生
+                response_json = response.json()
+                
+                # JSONレスポンスを折り畳み表示（デバッグ用）
+                with st.expander("APIレスポンス (JSON)"):
+                    st.json(response_json, expanded=False)
+                
+                # 例: {"contents": [{"parts": [{"text": "..." }]}]}
+                try:
+                    raw_text = response_json["contents"][0]["parts"][0]["text"]
+                    # 区切り文字以降の部分を取り出して、ノイズを除去
+                    if "---変換開始---" in raw_text:
+                        converted_text = raw_text.split("---変換開始---")[-1].strip()
+                    else:
+                        converted_text = raw_text.strip()
+                except (KeyError, IndexError):
+                    st.warning("レスポンス構造が想定と異なります。")
+                    converted_text = ""
+                    st.write("レスポンス内容:", response_json)
+                st.write("変換完了。")
+                break  # 成功したのでループ終了
+            except requests.exceptions.Timeout as te:
+                st.warning(f"タイムアウトが発生しました。{attempt}回目のリトライ中です...")
+                if attempt == max_attempts:
+                    st.error("リクエストがタイムアウトしました。再試行回数の上限に達しました。")
+                    converted_text = ""
+                else:
+                    time.sleep(5)  # 次の試行前に待機
+            except requests.exceptions.ConnectionError as ce:
+                st.error("接続エラー：APIエンドポイントに到達できません。")
+                st.error(str(ce))
                 converted_text = ""
-                st.write("レスポンス内容:", response_json)
-            st.write("変換完了。")
-            break  # 成功したのでループ終了
-        except requests.exceptions.Timeout as te:
-            st.warning(f"タイムアウトが発生しました。{attempt}回目のリトライ中です...")
-            if attempt == max_attempts:
-                st.error("リクエストがタイムアウトしました。再試行回数の上限に達しました。")
+                break
+            except requests.exceptions.HTTPError as he:
+                st.error("HTTPエラーが発生しました：" + str(he))
                 converted_text = ""
-            else:
-                time.sleep(5)  # 次の試行前に待機
-        except requests.exceptions.ConnectionError as ce:
-            st.error("接続エラー：APIエンドポイントに到達できません。")
-            st.error(str(ce))
-            converted_text = ""
-            break
-        except requests.exceptions.HTTPError as he:
-            st.error("HTTPエラーが発生しました：" + str(he))
-            converted_text = ""
-            break
-        except Exception as e:
-            st.error("予期しないエラーが発生しました：" + str(e))
-            converted_text = ""
-            break
+                break
+            except Exception as e:
+                st.error("予期しないエラーが発生しました：" + str(e))
+                converted_text = ""
+                break
     
     with col2:
         st.subheader("変換後のテキスト")
