@@ -7,6 +7,7 @@ import httpx
 import requests
 from docx import Document
 from utils.file_processor import extract_text
+from PyPDF2 import PdfReader
 
 # ワイドモードで起動
 st.set_page_config(layout="wide")
@@ -42,39 +43,78 @@ div.stButton > button, div.stDownloadButton > button {
 </style>
 """, unsafe_allow_html=True)
 
-# サイドバー：ファイルアップロード、要約生成、ファイル出力、検索クエリ入力
+# --- RAG: PDFの議事録を読み込み・検索するための機能 ---
+
+def load_all_meeting_minutes(folder_path="data/meeting_minutes"):
+    """
+    指定フォルダ内にある複数PDFファイルのテキストを読み込み、ファイル名をキー、
+    テキストを値とする辞書を返す。
+    """
+    meeting_data = {}
+    if os.path.exists(folder_path):
+        pdf_files = [f for f in os.listdir(folder_path) if f.lower().endswith(".pdf")]
+        for pdf_file in pdf_files:
+            full_path = os.path.join(folder_path, pdf_file)
+            try:
+                reader = PdfReader(full_path)
+                all_text = ""
+                for page in reader.pages:
+                    txt = page.extract_text()
+                    if txt:
+                        all_text += txt + "\n"
+                meeting_data[pdf_file] = all_text
+            except Exception as e:
+                print(f"PDF読み込みに失敗: {pdf_file}, {e}")
+    return meeting_data
+
+def search_meeting_minutes(meeting_data, query):
+    """
+    複数PDFファイルのテキストを検索し、該当部分を返す（簡易的な文字列検索）。
+    """
+    results = []
+    if not query:
+        return results
+    for filename, text in meeting_data.items():
+        lines = text.splitlines()
+        matched_lines = []
+        for line in lines:
+            if query.lower() in line.lower():
+                matched_lines.append(line.strip())
+        if matched_lines:
+            results.append((filename, matched_lines))
+    return results
+
+# 議事録をロード（フォルダ data/meeting_minutes 内）
+meeting_minutes_data = load_all_meeting_minutes("data/meeting_minutes")
+
+# サイドバー：PDF議事録検索クエリ
+search_query = st.sidebar.text_input("議事録検索クエリ (PDF)")
+
+if search_query:
+    st.sidebar.markdown("### 検索結果")
+    if meeting_minutes_data:
+        search_results = search_meeting_minutes(meeting_minutes_data, search_query)
+        if search_results:
+            for (fname, lines) in search_results:
+                st.sidebar.write(f"**{fname}** の該当箇所:")
+                for ln in lines:
+                    st.sidebar.write(f"- {ln}")
+        else:
+            st.sidebar.write("該当する内容が見つかりませんでした。")
+    else:
+        st.sidebar.write("議事録PDFがロードされていません。'data/meeting_minutes' フォルダを確認してください。")
+
+# --- 既存のファイルアップロード・変換・要約などの機能 ---
+
 sidebar_file = st.sidebar.file_uploader("WordまたはPDFファイルをアップロードしてください", type=["docx", "pdf"])
 if sidebar_file:
     st.sidebar.write("ファイルがアップロードされました。")
+
 generate_summary_btn = st.sidebar.button("要約を生成")
 output_btn = st.sidebar.button("ファイルを出力")
 output_format = st.sidebar.radio("出力形式を選択してください", ("Word", "PDF"))
 
-# 議事録検索用：検索クエリ入力（内部の議事録を検索）
-search_query = st.sidebar.text_input("議事録検索クエリ", value="")
-
-# もし内部の議事録ファイルを読み込む場合は、dataフォルダ内のテキストファイルをロード
-# ※ GitHub では、リポジトリ内の "data/meeting_minutes.txt" に格納するのが一般的です。
-meeting_minutes = ""
-if os.path.exists("data/meeting_minutes.txt"):
-    with open("data/meeting_minutes.txt", "r", encoding="utf-8") as f:
-        meeting_minutes = f.read()
-
-# 議事録検索機能
-if search_query and meeting_minutes:
-    st.sidebar.markdown("### 検索結果")
-    # 単純な文字列検索（大文字小文字区別なし）
-    results = [line for line in meeting_minutes.splitlines() if search_query.lower() in line.lower()]
-    if results:
-        st.sidebar.markdown("\n".join(results))
-    else:
-        st.sidebar.write("該当する内容が見つかりませんでした。")
-elif search_query:
-    st.sidebar.write("議事録データが読み込めません。GitHub内の data/meeting_minutes.txt を確認してください。")
-
 st.title("LingoBridge - 方言→標準語変換＆要約アプリ")
-
-# --- 既存の変換処理等 ---
 
 if sidebar_file is not None:
     try:
@@ -99,7 +139,6 @@ if sidebar_file is not None:
     max_attempts = 3
     timeout_seconds = 30
 
-    # 非同期API呼び出し用の共通関数（httpx, asyncioを使用）
     async def fetch_api(payload: dict) -> dict:
         attempt = 1
         while attempt <= max_attempts:
@@ -152,7 +191,7 @@ if sidebar_file is not None:
         converted_text = ""
     st.write("変換完了。")
     
-    # タブで元のテキストと変換後テキストを表示（各タブ内のウィンドウは自動改行により全体が見える）
+    # タブ表示で元のテキストと変換後テキスト
     if converted_text:
         tabs = st.tabs(["元のテキスト", "変換後のテキスト"])
         with tabs[0]:
@@ -229,7 +268,7 @@ if sidebar_file is not None:
             """
             components.html(html_converted, height=470, scrolling=True)
     
-    # サイドバーのファイル出力処理
+    # サイドバーのファイル出力
     if output_btn:
         if output_format == "Word":
             try:
@@ -253,7 +292,7 @@ if sidebar_file is not None:
             except Exception as e:
                 st.error("PDFファイルの生成に失敗しました：" + str(e))
     
-    # 要約機能（発言者整理・セクショニング指示付き）
+    # 要約機能
     summary_text = ""
     if generate_summary_btn:
         summarize_prompt = (
