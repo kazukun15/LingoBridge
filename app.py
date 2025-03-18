@@ -6,7 +6,7 @@ import requests
 from docx import Document
 from utils.file_processor import extract_text
 
-# グローバルCSS（Robotoフォント採用、背景は白、色はモノクロで統一）
+# グローバルCSS（Robotoフォント採用、背景は白、モノクロで統一）
 st.markdown("""
 <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
@@ -38,6 +38,11 @@ div.stButton > button, div.stDownloadButton > button {
 """, unsafe_allow_html=True)
 
 # -------------------------------
+# サイドバーにファイルアップロード（デバッグ用：secretsの確認はメイン画面に表示）
+sidebar_file = st.sidebar.file_uploader("WordまたはPDFファイルをアップロードしてください", type=["docx", "pdf"])
+if sidebar_file:
+    st.write("【サイドバー】ファイルをアップロードしました。")
+
 # デバッグ用：secretsの読み込み確認（本番環境では非表示推奨）
 if "GEMINI_API_KEY" in st.secrets:
     st.write("【デバッグ表示】GEMINI_API_KEY:", st.secrets["GEMINI_API_KEY"])
@@ -46,21 +51,16 @@ else:
 
 st.title("LingoBridge - 方言→標準語変換＆要約アプリ")
 
-# 1. ファイルアップロード
-uploaded_file = st.file_uploader("WordまたはPDFファイルをアップロードしてください", type=["docx", "pdf"])
-
-if uploaded_file is not None:
-    st.write("ファイルをアップロードしました。")
-    
-    # 2. ファイルからテキスト抽出
+# 1. サイドバーでファイルアップロードした場合、メイン画面にテキスト抽出などの処理を表示
+if sidebar_file is not None:
     try:
-        original_text = extract_text(uploaded_file)
+        original_text = extract_text(sidebar_file)
         st.write("テキスト抽出完了。")
     except Exception as e:
         st.error(f"ファイルからテキストを抽出できませんでした: {e}")
         original_text = ""
     
-    # 3. プログレスバー（シミュレーション）
+    # 2. プログレスバー（シミュレーション）
     progress_bar = st.progress(0)
     for percent in range(1, 101):
         time.sleep(0.01)
@@ -73,7 +73,7 @@ if uploaded_file is not None:
     max_attempts = 3
     timeout_seconds = 30
 
-    # 4. 方言→標準語変換処理
+    # 3. 方言→標準語変換処理
     convert_prompt = (
         "以下の文章は方言が含まれています。文章全体の意味を十分に考慮し、"
         "すべての方言表現を標準語に変換してください。変換後の文章のみを出力してください。\n\n"
@@ -136,7 +136,7 @@ if uploaded_file is not None:
                 converted_text = ""
                 break
 
-    # 5. 元のテキストと変換後テキストを上下に表示（カスタムウィンドウ）
+    # 4. 元のテキストと変換後テキストを上下に表示（ウィンドウ内で改行を反映）
     if converted_text:
         html_code = f"""
         <!DOCTYPE html>
@@ -191,7 +191,7 @@ if uploaded_file is not None:
         """
         components.html(html_code, height=600, scrolling=True)
     
-    # 6. 出力機能（変換後テキストのダウンロード）
+    # 5. 出力機能（変換後テキストのダウンロード）
     output_format = st.radio("出力形式を選択してください", ("Word", "PDF"))
     if st.button("ファイルを出力"):
         if output_format == "Word":
@@ -216,7 +216,7 @@ if uploaded_file is not None:
             except Exception as e:
                 st.error("PDFファイルの生成に失敗しました：" + str(e))
     
-    # 7. 要約機能の実装（発言者整理・セクショニング指示付き）
+    # 6. 要約機能の実装（発言者整理・セクショニング指示付き）
     summary_text = ""
     if st.button("要約を生成"):
         summarize_prompt = (
@@ -281,7 +281,7 @@ if uploaded_file is not None:
                     summary_text = ""
                     break
         
-        # 8. 要約結果のマークダウン表示（横長ウィンドウ風）
+        # 7. 要約結果をマークダウン形式で表示（横長ウィンドウ風）
         if summary_text:
             st.markdown("## 要約結果")
             st.markdown(summary_text)
