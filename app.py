@@ -41,7 +41,7 @@ if uploaded_file is not None:
         progress_bar.progress(percent)
     
     # 5. Gemini API 呼び出しの準備
-    # プロンプトに区切り文字は使用せず、シンプルに送信
+    # シンプルなプロンプトを作成
     prompt = (
         "以下の文章は方言が含まれています。文章全体の意味を十分に考慮し、"
         "すべての方言表現を標準語に変換してください。変換後の文章のみを出力してください。\n\n"
@@ -58,7 +58,7 @@ if uploaded_file is not None:
         ]
     }
     
-    # secrets から API キーを取得し URL に埋め込む
+    # secretsからAPIキーを取得し、URLに埋め込み
     api_key = st.secrets.get("GEMINI_API_KEY", "")
     api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
     
@@ -84,8 +84,17 @@ if uploaded_file is not None:
                 with st.expander("APIレスポンス (JSON)"):
                     st.json(response_json, expanded=False)
                 
-                # ここで JSON の "text" フィールドをそのまま取得
-                converted_text = response_json["contents"][0]["parts"][0]["text"].strip()
+                if "contents" in response_json:
+                    try:
+                        converted_text = response_json["contents"][0]["parts"][0]["text"].strip()
+                    except (KeyError, IndexError):
+                        st.error("レスポンス構造が想定と異なります。")
+                        st.write("レスポンス内容:", response_json)
+                        converted_text = ""
+                else:
+                    st.error("APIレスポンスに 'contents' キーが存在しません。")
+                    st.write("APIレスポンス:", response_json)
+                    converted_text = ""
                 
                 st.write("変換完了。")
                 break  # 成功したのでループ終了
