@@ -40,12 +40,12 @@ if uploaded_file is not None:
         time.sleep(0.01)
         progress_bar.progress(percent)
     
-    # 5. GeminiAPI 呼び出しの準備
-    # プロンプトに区切り文字を入れて、APIが返す内容からノイズを除去できるようにする
+    # 5. Gemini API 呼び出しの準備
+    # プロンプトに区切り文字は使用せず、シンプルに送信
     prompt = (
         "以下の文章は方言が含まれています。文章全体の意味を十分に考慮し、"
         "すべての方言表現を標準語に変換してください。変換後の文章のみを出力してください。\n\n"
-        "---変換開始---\nテキスト:\n" + original_text
+        "テキスト:\n" + original_text
     )
     
     payload = {
@@ -58,7 +58,7 @@ if uploaded_file is not None:
         ]
     }
     
-    # secretsからAPIキーを取得し、URLに埋め込む
+    # secrets から API キーを取得し URL に埋め込む
     api_key = st.secrets.get("GEMINI_API_KEY", "")
     api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
     
@@ -73,7 +73,6 @@ if uploaded_file is not None:
     timeout_seconds = 30
     converted_text = ""
     
-    # スピナーを表示して処理中をユーザーに伝える
     with st.spinner("GeminiAPIで処理中..."):
         for attempt in range(1, max_attempts + 1):
             try:
@@ -85,18 +84,9 @@ if uploaded_file is not None:
                 with st.expander("APIレスポンス (JSON)"):
                     st.json(response_json, expanded=False)
                 
-                # 例: {"contents": [{"parts": [{"text": "..." }]}]}
-                try:
-                    raw_text = response_json["contents"][0]["parts"][0]["text"]
-                    # 区切り文字以降の部分を取り出して、ノイズを除去
-                    if "---変換開始---" in raw_text:
-                        converted_text = raw_text.split("---変換開始---")[-1].strip()
-                    else:
-                        converted_text = raw_text.strip()
-                except (KeyError, IndexError):
-                    st.warning("レスポンス構造が想定と異なります。")
-                    converted_text = ""
-                    st.write("レスポンス内容:", response_json)
+                # ここで JSON の "text" フィールドをそのまま取得
+                converted_text = response_json["contents"][0]["parts"][0]["text"].strip()
+                
                 st.write("変換完了。")
                 break  # 成功したのでループ終了
             except requests.exceptions.Timeout as te:
@@ -141,7 +131,7 @@ if uploaded_file is not None:
         else:
             try:
                 output_filename = "converted.pdf"
-                # 簡易的なPDF生成例。必要に応じてreportlabなどのライブラリを検討してください
+                # 簡易的なPDF生成例（必要に応じて reportlab 等を利用してください）
                 with open(output_filename, "wb") as f:
                     f.write(converted_text.encode("utf-8"))
                 with open(output_filename, "rb") as f:
