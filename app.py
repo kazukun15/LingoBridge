@@ -37,11 +37,10 @@ div.stButton > button, div.stDownloadButton > button {
 </style>
 """, unsafe_allow_html=True)
 
-# -------------------------------
-# サイドバーにファイルアップロード（デバッグ用：secretsの確認はメイン画面に表示）
+# サイドバーにファイルアップロード
 sidebar_file = st.sidebar.file_uploader("WordまたはPDFファイルをアップロードしてください", type=["docx", "pdf"])
 if sidebar_file:
-    st.write("【サイドバー】ファイルをアップロードしました。")
+    st.sidebar.write("ファイルがアップロードされました。")
 
 # デバッグ用：secretsの読み込み確認（本番環境では非表示推奨）
 if "GEMINI_API_KEY" in st.secrets:
@@ -49,9 +48,8 @@ if "GEMINI_API_KEY" in st.secrets:
 else:
     st.error("【デバッグ表示】'GEMINI_API_KEY' が secrets に存在しません。")
 
-st.title("LingoBridge - 方言から標準語変換＋要約アプリ")
+st.title("LingoBridge - 方言→標準語変換＆要約アプリ")
 
-# 1. サイドバーでファイルアップロードした場合、メイン画面にテキスト抽出などの処理を表示
 if sidebar_file is not None:
     try:
         original_text = extract_text(sidebar_file)
@@ -60,11 +58,13 @@ if sidebar_file is not None:
         st.error(f"ファイルからテキストを抽出できませんでした: {e}")
         original_text = ""
     
-    # 2. プログレスバー（シミュレーション）
+    # プログレスバー（％表示付き）
     progress_bar = st.progress(0)
+    progress_text = st.empty()
     for percent in range(1, 101):
         time.sleep(0.01)
         progress_bar.progress(percent)
+        progress_text.text(f"{percent}%")
     
     # 共通のAPI設定
     api_key = st.secrets.get("GEMINI_API_KEY", "")
@@ -73,7 +73,7 @@ if sidebar_file is not None:
     max_attempts = 3
     timeout_seconds = 30
 
-    # 3. 方言→標準語変換処理
+    # 方言→標準語変換処理
     convert_prompt = (
         "以下の文章は方言が含まれています。文章全体の意味を十分に考慮し、"
         "すべての方言表現を標準語に変換してください。変換後の文章のみを出力してください。\n\n"
@@ -136,7 +136,7 @@ if sidebar_file is not None:
                 converted_text = ""
                 break
 
-    # 4. 元のテキストと変換後テキストを上下に表示（ウィンドウ内で改行を反映）
+    # 元のテキストと変換後テキストを横並びに表示（カスタムウィンドウ内、改行反映）
     if converted_text:
         html_code = f"""
         <!DOCTYPE html>
@@ -145,8 +145,8 @@ if sidebar_file is not None:
           <style>
             .container {{
               display: flex;
-              flex-direction: column;
-              align-items: center;
+              flex-direction: row;
+              align-items: flex-start;
               gap: 20px;
             }}
             .text-window {{
@@ -159,13 +159,14 @@ if sidebar_file is not None:
               line-height: 1.6;
               box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
               overflow: auto;
-              width: 100%;
+              width: 48%;
               white-space: pre-wrap;
             }}
             .arrow {{
               font-size: 64px;
               font-weight: bold;
               color: #000000;
+              align-self: center;
             }}
             .header {{
               margin-top: 0;
@@ -180,7 +181,7 @@ if sidebar_file is not None:
               <h2 class="header">元のテキスト</h2>
               <p>{original_text}</p>
             </div>
-            <div class="arrow">↓</div>
+            <div class="arrow">⇒</div>
             <div class="text-window">
               <h2 class="header">変換後のテキスト</h2>
               <p>{converted_text}</p>
@@ -191,7 +192,7 @@ if sidebar_file is not None:
         """
         components.html(html_code, height=600, scrolling=True)
     
-    # 5. 出力機能（変換後テキストのダウンロード）
+    # 出力機能（変換後テキストのダウンロード）
     output_format = st.radio("出力形式を選択してください", ("Word", "PDF"))
     if st.button("ファイルを出力"):
         if output_format == "Word":
@@ -216,7 +217,7 @@ if sidebar_file is not None:
             except Exception as e:
                 st.error("PDFファイルの生成に失敗しました：" + str(e))
     
-    # 6. 要約機能の実装（発言者整理・セクショニング指示付き）
+    # 要約機能の実装（発言者整理・セクショニング指示付き）
     summary_text = ""
     if st.button("要約を生成"):
         summarize_prompt = (
@@ -281,7 +282,7 @@ if sidebar_file is not None:
                     summary_text = ""
                     break
         
-        # 7. 要約結果をマークダウン形式で表示（横長ウィンドウ風）
+        # 要約結果をマークダウン形式で表示
         if summary_text:
             st.markdown("## 要約結果")
             st.markdown(summary_text)
