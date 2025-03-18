@@ -3,3 +3,4 @@ python-docx
 PyPDF2
 requests
 httpx
+google-cloud-storage
