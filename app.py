@@ -2,6 +2,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 import time
 import os
+import requests
 import asyncio
 import httpx
 from docx import Document
@@ -10,7 +11,7 @@ from utils.file_processor import extract_text
 # ワイドモードで起動
 st.set_page_config(layout="wide")
 
-# グローバルCSS（Robotoフォント採用、背景は白、モノクロ、テキストは自動改行）
+# グローバルCSS（Robotoフォント採用、背景は白、モノクロで統一、テキストは自動改行）
 st.markdown("""
 <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
@@ -41,7 +42,7 @@ div.stButton > button, div.stDownloadButton > button {
 </style>
 """, unsafe_allow_html=True)
 
-# サイドバーにファイルアップロードと各種ボタンを配置
+# サイドバーにファイルアップロード、要約生成、ファイル出力ボタン、出力形式選択を配置
 sidebar_file = st.sidebar.file_uploader("WordまたはPDFファイルをアップロードしてください", type=["docx", "pdf"])
 if sidebar_file:
     st.sidebar.write("ファイルがアップロードされました。")
@@ -49,9 +50,11 @@ generate_summary_btn = st.sidebar.button("要約を生成")
 output_btn = st.sidebar.button("ファイルを出力")
 output_format = st.sidebar.radio("出力形式を選択してください", ("Word", "PDF"))
 
+# サイドバーにテキストウィンドウの高さ調整スライダー（300px〜600px、約10%ずつの目安として60pxステップ）
+window_height = st.sidebar.slider("テキストウィンドウの高さ (px)", 300, 600, 600, step=60)
+
 st.title("LingoBridge - 方言→標準語変換＆要約アプリ")
 
-# APIキーは画面に表示しない（st.secretsから取得）
 if sidebar_file is not None:
     try:
         original_text = extract_text(sidebar_file)
@@ -68,14 +71,14 @@ if sidebar_file is not None:
         progress_bar.progress(percent)
         progress_text.text(f"{percent}%")
     
-    # 共通のAPI設定
+    # 共通のAPI設定（APIキーはst.secretsから取得）
     api_key = st.secrets.get("GEMINI_API_KEY", "")
     api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
     headers = {"Content-Type": "application/json"}
     max_attempts = 3
     timeout_seconds = 30
 
-    # 非同期API呼び出し用の共通関数
+    # 非同期API呼び出し用の共通関数（httpx, asyncioを使用）
     async def fetch_api(payload: dict) -> dict:
         attempt = 1
         while attempt <= max_attempts:
@@ -128,7 +131,7 @@ if sidebar_file is not None:
         converted_text = ""
     st.write("変換完了。")
     
-    # タブで元のテキストと変換後テキストを表示（各タブ内は自動改行により横スクロールなし）
+    # タブで元のテキストと変換後テキストを表示（各タブ内は自動改行により全体が見える）
     if converted_text:
         tabs = st.tabs(["元のテキスト", "変換後のテキスト"])
         with tabs[0]:
@@ -148,6 +151,7 @@ if sidebar_file is not None:
                   box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
                   overflow: auto;
                   width: 100%;
+                  height: {window_height}px;
                   white-space: pre-wrap;
                 }}
                 .header {{
@@ -165,7 +169,7 @@ if sidebar_file is not None:
             </body>
             </html>
             """
-            components.html(html_original, height=600, scrolling=True)
+            components.html(html_original, height=window_height+100, scrolling=True)
         
         with tabs[1]:
             html_converted = f"""
@@ -184,6 +188,7 @@ if sidebar_file is not None:
                   box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
                   overflow: auto;
                   width: 100%;
+                  height: {window_height}px;
                   white-space: pre-wrap;
                 }}
                 .header {{
@@ -201,7 +206,7 @@ if sidebar_file is not None:
             </body>
             </html>
             """
-            components.html(html_converted, height=600, scrolling=True)
+            components.html(html_converted, height=window_height+100, scrolling=True)
     
     # サイドバーのファイル出力処理
     if output_btn:
