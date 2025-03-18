@@ -2,9 +2,9 @@ import streamlit as st
 import streamlit.components.v1 as components
 import time
 import os
-import requests
 import asyncio
 import httpx
+import requests
 from docx import Document
 from utils.file_processor import extract_text
 
@@ -42,7 +42,7 @@ div.stButton > button, div.stDownloadButton > button {
 </style>
 """, unsafe_allow_html=True)
 
-# サイドバーにファイルアップロードと各種ボタンを配置
+# サイドバー：ファイルアップロード、要約生成、ファイル出力、検索クエリ入力
 sidebar_file = st.sidebar.file_uploader("WordまたはPDFファイルをアップロードしてください", type=["docx", "pdf"])
 if sidebar_file:
     st.sidebar.write("ファイルがアップロードされました。")
@@ -50,7 +50,31 @@ generate_summary_btn = st.sidebar.button("要約を生成")
 output_btn = st.sidebar.button("ファイルを出力")
 output_format = st.sidebar.radio("出力形式を選択してください", ("Word", "PDF"))
 
+# 議事録検索用：検索クエリ入力（内部の議事録を検索）
+search_query = st.sidebar.text_input("議事録検索クエリ", value="")
+
+# もし内部の議事録ファイルを読み込む場合は、dataフォルダ内のテキストファイルをロード
+# ※ GitHub では、リポジトリ内の "data/meeting_minutes.txt" に格納するのが一般的です。
+meeting_minutes = ""
+if os.path.exists("data/meeting_minutes.txt"):
+    with open("data/meeting_minutes.txt", "r", encoding="utf-8") as f:
+        meeting_minutes = f.read()
+
+# 議事録検索機能
+if search_query and meeting_minutes:
+    st.sidebar.markdown("### 検索結果")
+    # 単純な文字列検索（大文字小文字区別なし）
+    results = [line for line in meeting_minutes.splitlines() if search_query.lower() in line.lower()]
+    if results:
+        st.sidebar.markdown("\n".join(results))
+    else:
+        st.sidebar.write("該当する内容が見つかりませんでした。")
+elif search_query:
+    st.sidebar.write("議事録データが読み込めません。GitHub内の data/meeting_minutes.txt を確認してください。")
+
 st.title("LingoBridge - 方言→標準語変換＆要約アプリ")
+
+# --- 既存の変換処理等 ---
 
 if sidebar_file is not None:
     try:
@@ -60,7 +84,7 @@ if sidebar_file is not None:
         st.error(f"ファイルからテキストを抽出できませんでした: {e}")
         original_text = ""
     
-    # プログレスバー（％表示付き）
+    # 変換処理用プログレスバー（％表示付き）
     progress_bar = st.progress(0)
     progress_text = st.empty()
     for percent in range(1, 101):
@@ -75,7 +99,7 @@ if sidebar_file is not None:
     max_attempts = 3
     timeout_seconds = 30
 
-    # 非同期API呼び出し用の共通関数
+    # 非同期API呼び出し用の共通関数（httpx, asyncioを使用）
     async def fetch_api(payload: dict) -> dict:
         attempt = 1
         while attempt <= max_attempts:
@@ -148,7 +172,7 @@ if sidebar_file is not None:
                   box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
                   overflow: auto;
                   width: 90%;
-                  height: 500px;
+                  height: 450px;
                   white-space: pre-wrap;
                 }}
                 .header {{
@@ -166,7 +190,7 @@ if sidebar_file is not None:
             </body>
             </html>
             """
-            components.html(html_original, height=520, scrolling=True)
+            components.html(html_original, height=470, scrolling=True)
         
         with tabs[1]:
             html_converted = f"""
@@ -185,7 +209,7 @@ if sidebar_file is not None:
                   box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1);
                   overflow: auto;
                   width: 90%;
-                  height: 500px;
+                  height: 450px;
                   white-space: pre-wrap;
                 }}
                 .header {{
@@ -203,7 +227,7 @@ if sidebar_file is not None:
             </body>
             </html>
             """
-            components.html(html_converted, height=520, scrolling=True)
+            components.html(html_converted, height=470, scrolling=True)
     
     # サイドバーのファイル出力処理
     if output_btn:
@@ -229,7 +253,7 @@ if sidebar_file is not None:
             except Exception as e:
                 st.error("PDFファイルの生成に失敗しました：" + str(e))
     
-    # 要約機能
+    # 要約機能（発言者整理・セクショニング指示付き）
     summary_text = ""
     if generate_summary_btn:
         summarize_prompt = (
