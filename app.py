@@ -5,11 +5,7 @@ import requests
 from docx import Document
 from utils.file_processor import extract_text  # utils/file_processor.py に実装済み
 
-# ---------------------------------------------
-# デバッグ用：シークレットの読み込み確認
-# ---------------------------------------------
-# もし "GEMINI_API_KEY" が st.secrets に存在すれば値を表示する
-# 本番環境では機密情報を画面に表示しないよう注意してください。
+# デバッグ用：secretsの読み込み確認（本番運用時は削除推奨）
 if "GEMINI_API_KEY" in st.secrets:
     st.write("【デバッグ表示】GEMINI_API_KEY:", st.secrets["GEMINI_API_KEY"])
 else:
@@ -41,27 +37,55 @@ if uploaded_file is not None:
     # 4. プログレスバー（変換処理の進捗をシミュレーション）
     progress_bar = st.progress(0)
     for percent in range(1, 101):
-        time.sleep(0.01)
+        time.sleep(0.01)  # UIを更新しているだけの例
         progress_bar.progress(percent)
 
-    # 5. GeminiAPI の呼び出し
+    # 5. Google Generative Language API (Gemini) への呼び出し
+    #    curl例：
+    #    curl "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=GEMINI_API_KEY" \
+    #    -H 'Content-Type: application/json' -X POST \
+    #    -d '{"contents":[{"parts":[{"text":"Explain how AI works"}]}]}'
+
     # secrets からキーを読み込み
     api_key = st.secrets.get("GEMINI_API_KEY", "")
-    # 実際のAPIエンドポイントに置き換えてください
-    api_url = "https://api.gemini.example.com/convert"
+    # 実際のAPIキーをパラメータとして付与
+    api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
 
-    headers = {"Authorization": f"Bearer {api_key}"}
-    data = {
-        "model": "models/gemini-2.0-flash",
-        "text": original_text
+    # Content-TypeはJSON
+    headers = {
+        "Content-Type": "application/json"
+    }
+
+    # curl例に合わせたJSON構造にする
+    # 今回は original_text をそのまま送る例
+    payload = {
+        "contents": [
+            {
+                "parts": [
+                    {"text": original_text}
+                ]
+            }
+        ]
     }
 
     st.write("GeminiAPI にリクエストを送信中...")
 
     try:
-        response = requests.post(api_url, headers=headers, json=data, timeout=10)
+        response = requests.post(api_url, headers=headers, json=payload, timeout=10)
         response.raise_for_status()  # HTTPエラーがあれば例外を発生
-        converted_text = response.json().get("converted_text", "")
+        # 実際のレスポンス構造を st.write(response.json()) などで確認推奨
+        response_json = response.json()
+
+        # 例: "contents" → [0] → "parts" → [0] → "text" という構造を想定
+        # APIのバージョンによっては "candidates" フィールドなどが使用される場合も
+        converted_text = ""
+        try:
+            converted_text = response_json["contents"][0]["parts"][0]["text"]
+        except (KeyError, IndexError):
+            # もしレスポンスが異なる構造ならここで例外処理
+            st.warning("レスポンス構造が想定と異なります。")
+            st.write("レスポンス内容:", response_json)
+
         st.write("変換完了。")
     except requests.exceptions.ConnectionError as ce:
         st.error("接続エラー：APIエンドポイントに到達できません。")
@@ -99,7 +123,7 @@ if uploaded_file is not None:
         else:
             try:
                 output_filename = "converted.pdf"
-                # シンプルなPDF生成（実際は reportlab 等のライブラリを用いると良い）
+                # シンプルなPDF生成（本格的には reportlab 等のライブラリを検討）
                 with open(output_filename, "wb") as f:
                     f.write(converted_text.encode("utf-8"))
                 with open(output_filename, "rb") as f:
