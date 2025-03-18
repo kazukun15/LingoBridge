@@ -6,7 +6,7 @@ import requests
 from docx import Document
 from utils.file_processor import extract_text
 
-# グローバルCSS（Robotoフォント採用、背景は白、モノクロで統一）
+# グローバルCSS（Robotoフォント採用、背景は白、色はモノクロで統一）
 st.markdown("""
 <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
@@ -60,8 +60,6 @@ if uploaded_file is not None:
         st.error(f"ファイルからテキストを抽出できませんでした: {e}")
         original_text = ""
     
-    # ※元のテキストは後述のウィンドウ内にのみ表示します。
-
     # 3. プログレスバー（シミュレーション）
     progress_bar = st.progress(0)
     for percent in range(1, 101):
@@ -138,9 +136,8 @@ if uploaded_file is not None:
                 converted_text = ""
                 break
 
-    # 5. 変換後テキストの表示（元のテキストと変換後テキストを1組のウィンドウで表示）
+    # 5. 元のテキストと変換後テキストを上下に表示（カスタムウィンドウ）
     if converted_text:
-        # カスタムウィンドウ内では、white-space: pre-wrap; を指定して改行を反映
         html_code = f"""
         <!DOCTYPE html>
         <html>
@@ -183,7 +180,7 @@ if uploaded_file is not None:
               <h2 class="header">元のテキスト</h2>
               <p>{original_text}</p>
             </div>
-            <div class="arrow">⇒</div>
+            <div class="arrow">↓</div>
             <div class="text-window">
               <h2 class="header">変換後のテキスト</h2>
               <p>{converted_text}</p>
